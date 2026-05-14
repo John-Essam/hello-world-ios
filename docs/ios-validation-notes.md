@@ -9,7 +9,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Feature | Official iOS API / Flow | Status | Classification | Evidence |
 |---|---|---|---|---|
 | BLE Scan | `CBCentralManager.scanForPeripherals(withServices:options:)` with vendor service UUIDs | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
-| BLE Connect / Disconnect | Pending implementation | NOT_TESTED | - | - |
+| BLE Connect / Disconnect | `CBCentralManager.connect`, `CBCentralManager.cancelPeripheralConnection`, `CBPeripheral.discoverServices` | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Authentication (Bind) | Pending implementation | NOT_TESTED | - | - |
 | BLE Unbind | Pending implementation | NOT_TESTED | - | - |
 | Heartbeat stream (`TCB01`) | Pending implementation | NOT_TESTED | - | - |

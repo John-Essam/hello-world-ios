@@ -2,13 +2,15 @@ import CoreBluetooth
 import SwiftUI
 
 struct BLEFoundationView: View {
-    @StateObject private var viewModel = BLEScanViewModel()
+    @StateObject private var viewModel = BLEFoundationViewModel()
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Feature Status") {
                     LabeledContent("BLE Scan", value: viewModel.scanStatus.rawValue)
+                    LabeledContent("BLE Connect", value: viewModel.connectStatus.rawValue)
+                    LabeledContent("Connection", value: viewModel.connectionState.rawValue)
                     LabeledContent("Bluetooth State", value: bluetoothStateText(viewModel.bluetoothState))
                 }
 
@@ -24,15 +26,27 @@ struct BLEFoundationView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(viewModel.devices) { device in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(device.name)
-                                    .font(.headline)
-                                Text(device.peripheralID.uuidString)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text("RSSI: \(device.rssi) • Seen: \(device.discoverCount)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(device.name)
+                                        .font(.headline)
+                                    Text(device.peripheralID.uuidString)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text("RSSI: \(device.rssi) • Seen: \(device.discoverCount)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                if viewModel.connectedDeviceID == device.peripheralID {
+                                    Button("Disconnect") {
+                                        viewModel.disconnect()
+                                    }
+                                } else {
+                                    Button("Connect") {
+                                        viewModel.connect(peripheralID: device.peripheralID)
+                                    }
+                                }
                             }
                         }
                     }

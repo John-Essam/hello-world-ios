@@ -13,6 +13,12 @@ enum ValidationIssueType: String {
     case implementationIssue = "IMPLEMENTATION_ISSUE"
 }
 
+enum BLEConnectionState: String {
+    case disconnected = "DISCONNECTED"
+    case connecting = "CONNECTING"
+    case connected = "CONNECTED"
+}
+
 struct ValidationLog: Identifiable {
     let id = UUID()
     let timestamp = Date()
