@@ -83,36 +83,75 @@ struct BLEFoundationView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Discovered Devices")
-                            .font(.headline)
+                        HStack {
+                            Text("Nearby BLE Devices")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(viewModel.devices.count)")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.12), in: Capsule())
+                        }
+                        Text("MAC is not exposed by iOS; identifier is shown for validation.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 4)
+
                         if viewModel.devices.isEmpty {
-                            Text("No devices yet")
+                            Text("No nearby devices discovered yet.")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                                .padding(.vertical, 8)
                         } else {
                             ForEach(viewModel.devices) { device in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(device.name)
-                                            .font(.headline)
-                                        Text(device.peripheralID.uuidString)
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: "scooter")
+                                        .font(.title3)
+                                        .foregroundStyle(.blue)
+                                        .padding(.top, 2)
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text(device.name)
+                                                .font(.headline)
+                                            Spacer()
+                                            Text(viewModel.connectionLabel(for: device.peripheralID))
+                                                .font(.caption.weight(.semibold))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(connectionPillColor(for: device.peripheralID).opacity(0.15), in: Capsule())
+                                                .foregroundStyle(connectionPillColor(for: device.peripheralID))
+                                        }
+
+                                        Text("Identifier: \(device.peripheralID.uuidString)")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
-                                        Text("RSSI: \(device.rssi) • Seen: \(device.discoverCount)")
+                                            .textSelection(.enabled)
+
+                                        Text("RSSI: \(device.rssi) dBm • Discoveries: \(device.discoverCount)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
-                                    }
 
-                                    if viewModel.connectedDeviceID == device.peripheralID {
-                                        Button("Disconnect") {
-                                            viewModel.disconnect()
-                                        }
-                                    } else {
-                                        Button("Connect") {
-                                            viewModel.connect(peripheralID: device.peripheralID)
+                                        HStack {
+                                            if viewModel.connectedDeviceID == device.peripheralID {
+                                                Button("Disconnect") {
+                                                    viewModel.disconnect()
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .tint(.red)
+                                            } else {
+                                                Button("Connect") {
+                                                    viewModel.connect(peripheralID: device.peripheralID)
+                                                }
+                                                .buttonStyle(.borderedProminent)
+                                            }
+                                            Spacer()
                                         }
                                     }
                                 }
-                                .padding(.vertical, 6)
+                                .padding(12)
+                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
                     }
@@ -161,6 +200,15 @@ struct BLEFoundationView: View {
             return .red
         }
         return .secondary
+    }
+
+    private func connectionPillColor(for deviceID: UUID) -> Color {
+        let label = viewModel.connectionLabel(for: deviceID)
+        switch label {
+        case "Connected": return .green
+        case "Connecting": return .orange
+        default: return .secondary
+        }
     }
 }
 

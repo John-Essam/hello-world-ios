@@ -17,6 +17,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastHeartbeat: HeartbeatSnapshot?
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
+    @Published private(set) var connectingDeviceID: UUID?
     @Published private(set) var hasScanAttempted = false
     @Published private(set) var lastScanError: String?
 
@@ -85,6 +86,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             connectStatus = .failed
             return
         }
+        connectingDeviceID = peripheralID
         connectionState = .connecting
         appendLog("CONNECT request: id=\(peripheralID.uuidString) name=\(peripheral.name ?? "NoName")")
         centralManager.connect(peripheral, options: nil)
@@ -181,6 +183,16 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
         return "Ready to scan"
     }
+
+    func connectionLabel(for deviceID: UUID) -> String {
+        if connectedDeviceID == deviceID {
+            return "Connected"
+        }
+        if connectingDeviceID == deviceID {
+            return "Connecting"
+        }
+        return "Not Connected"
+    }
 }
 
 extension BLEFoundationViewModel: CBCentralManagerDelegate {
@@ -232,6 +244,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
         Task { @MainActor in
             connectedPeripheral = peripheral
             connectedDeviceID = peripheral.identifier
+            connectingDeviceID = nil
             connectionState = .connected
             connectStatus = .passed
             appendLog("CONNECT success: id=\(peripheral.identifier.uuidString) name=\(peripheral.name ?? "NoName")")
@@ -250,6 +263,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
         Task { @MainActor in
             connectedPeripheral = nil
             connectedDeviceID = nil
+            connectingDeviceID = nil
             connectionState = .disconnected
             connectStatus = .failed
             writeCharacteristic = nil
@@ -266,6 +280,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
         Task { @MainActor in
             connectedPeripheral = nil
             connectedDeviceID = nil
+            connectingDeviceID = nil
             connectionState = .disconnected
             writeCharacteristic = nil
             notifyCharacteristic = nil
