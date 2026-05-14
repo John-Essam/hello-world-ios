@@ -22,7 +22,18 @@ enum BLEConnectionState: String {
 struct ValidationLog: Identifiable {
     let id = UUID()
     let timestamp = Date()
+    let category: ValidationLogCategory
     let message: String
+}
+
+enum ValidationLogCategory: String {
+    case scan = "SCAN"
+    case connect = "CONNECT"
+    case notify = "NOTIFY"
+    case rx = "RX"
+    case tx = "TX"
+    case sdkParse = "SDK PARSE"
+    case error = "ERROR"
 }
 
 struct BLEScanDevice: Identifiable {

@@ -13,6 +13,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var bindStatus: ValidationStatus = .notTested
     @Published private(set) var unbindStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
+    @Published private(set) var notifyStatus: ValidationStatus = .notTested
+    @Published private(set) var isNotifying = false
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var lastHeartbeat: HeartbeatSnapshot?
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
@@ -61,7 +63,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         guard centralManager.state == .poweredOn else {
             let stateText = bluetoothStateLabel
             lastScanError = "BLE state is \(stateText)"
-            appendLog("SCAN failed: bluetoothState=\(stateText)")
+            appendLog(.error, "SCAN failed: bluetoothState=\(stateText)")
             scanStatus = .failed
             return
         }
@@ -71,49 +73,49 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         centralManager.scanForPeripherals(withServices: serviceUUIDs, options: options)
         isScanning = true
-        appendLog("SCAN start: services=\(serviceUUIDs.map(\.uuidString).joined(separator: ","))")
+        appendLog(.scan, "SCAN API started: services=\(serviceUUIDs.map(\.uuidString).joined(separator: ","))")
     }
 
     private func stopScan() {
         centralManager.stopScan()
         isScanning = false
-        appendLog("SCAN stop")
+        appendLog(.scan, "SCAN stopped")
     }
 
     func connect(peripheralID: UUID) {
         guard let peripheral = peripheralByID[peripheralID] else {
-            appendLog("CONNECT failed: peripheral not found id=\(peripheralID.uuidString)")
+            appendLog(.error, "CONNECT failed: peripheral not found id=\(peripheralID.uuidString)")
             connectStatus = .failed
             return
         }
         connectingDeviceID = peripheralID
         connectionState = .connecting
-        appendLog("CONNECT request: id=\(peripheralID.uuidString) name=\(peripheral.name ?? "NoName")")
+        appendLog(.connect, "CONNECT request: id=\(peripheralID.uuidString) name=\(peripheral.name ?? "NoName")")
         centralManager.connect(peripheral, options: nil)
     }
 
     func disconnect() {
         guard let connectedPeripheral else {
-            appendLog("DISCONNECT ignored: no connected peripheral")
+            appendLog(.connect, "DISCONNECT ignored: no connected peripheral")
             return
         }
-        appendLog("DISCONNECT request: id=\(connectedPeripheral.identifier.uuidString)")
+        appendLog(.connect, "DISCONNECT request: id=\(connectedPeripheral.identifier.uuidString)")
         centralManager.cancelPeripheralConnection(connectedPeripheral)
     }
 
     func bindScooter() {
         guard writeCharacteristic != nil else {
-            appendLog("BIND failed: write characteristic not ready")
+            appendLog(.error, "BIND failed: write characteristic not ready")
             bindStatus = .failed
             return
         }
         do {
             let payload = try TCB02Command.writeConnect(on: true, userID: validatorUserID)
             pendingTcb02Action = .bind
-            appendLog("TX SDK TCB02Command.writeConnect(on:true,userID:\(validatorUserID)) bytes=\(payload.hexString)")
+            appendLog(.tx, "TX SDK TCB02Command.writeConnect(on:true,userID:\(validatorUserID)) bytes=\(payload.hexString)")
             send(payload)
         } catch {
-            appendLog("BIND sdk error: \(error)")
+            appendLog(.error, "BIND sdk error: \(error)")
             bindStatus = .failed
             pendingTcb02Action = nil
         }
@@ -121,24 +123,24 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
 
     func unbindScooter() {
         guard writeCharacteristic != nil else {
-            appendLog("UNBIND failed: write characteristic not ready")
+            appendLog(.error, "UNBIND failed: write characteristic not ready")
             unbindStatus = .failed
             return
         }
         do {
             let payload = try TCB02Command.readUnbind()
             pendingTcb02Action = .unbind
-            appendLog("TX SDK TCB02Command.readUnbind() bytes=\(payload.hexString)")
+            appendLog(.tx, "TX SDK TCB02Command.readUnbind() bytes=\(payload.hexString)")
             send(payload)
         } catch {
-            appendLog("UNBIND sdk error: \(error)")
+            appendLog(.error, "UNBIND sdk error: \(error)")
             unbindStatus = .failed
             pendingTcb02Action = nil
         }
     }
 
-    private func appendLog(_ message: String) {
-        logs.insert(ValidationLog(message: message), at: 0)
+    private func appendLog(_ category: ValidationLogCategory, _ message: String) {
+        logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
             logs.removeLast(logs.count - 200)
         }
@@ -193,13 +195,25 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
         return "Not Connected"
     }
+
+    var connectedDevice: BLEScanDevice? {
+        guard let connectedDeviceID else { return nil }
+        return devices.first(where: { $0.peripheralID == connectedDeviceID })
+    }
 }
 
 extension BLEFoundationViewModel: CBCentralManagerDelegate {
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor in
             bluetoothState = central.state
-            appendLog("BLE state update: \(central.state.rawValue)")
+            appendLog(.scan, "BLE state update: \(bluetoothStateLabel)")
+            if central.state == .unauthorized {
+                appendLog(.error, "Permissions missing: Bluetooth authorization is denied/restricted")
+            } else if central.state == .poweredOff {
+                appendLog(.error, "Bluetooth is powered off")
+            } else if central.state == .poweredOn {
+                appendLog(.scan, "Bluetooth powered on: scan ready")
+            }
         }
     }
 
@@ -235,7 +249,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             }
 
             devices.sort { $0.rssi > $1.rssi }
-            appendLog("SCAN didDiscover: name=\(name) id=\(id.uuidString) rssi=\(rssi)")
+            appendLog(.scan, "SCAN callback fired: name=\(name) id=\(id.uuidString) rssi=\(rssi)")
             scanStatus = .passed
         }
     }
@@ -247,10 +261,12 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectingDeviceID = nil
             connectionState = .connected
             connectStatus = .passed
-            appendLog("CONNECT success: id=\(peripheral.identifier.uuidString) name=\(peripheral.name ?? "NoName")")
+            appendLog(.connect, "CONNECT success: id=\(peripheral.identifier.uuidString) name=\(peripheral.name ?? "NoName")")
             peripheral.delegate = self
             writeCharacteristic = nil
             notifyCharacteristic = nil
+            notifyStatus = .notTested
+            isNotifying = false
             peripheral.discoverServices(nil)
         }
     }
@@ -268,7 +284,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectStatus = .failed
             writeCharacteristic = nil
             notifyCharacteristic = nil
-            appendLog("CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
+            notifyStatus = .failed
+            isNotifying = false
+            appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
         }
     }
 
@@ -284,7 +302,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectionState = .disconnected
             writeCharacteristic = nil
             notifyCharacteristic = nil
-            appendLog("DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
+            notifyStatus = .notTested
+            isNotifying = false
+            appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
         }
     }
 }
@@ -292,7 +312,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
 extension BLEFoundationViewModel: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: (any Error)?) {
         Task { @MainActor in
-            appendLog(
+            appendLog(.connect,
                 "SERVICES discovered: id=\(peripheral.identifier.uuidString) count=\(peripheral.services?.count ?? 0) error=\(String(describing: error))"
             )
             peripheral.services?.forEach { service in
@@ -307,7 +327,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         error: (any Error)?
     ) {
         Task { @MainActor in
-            appendLog(
+            appendLog(.connect,
                 "CHAR discovered: service=\(service.uuid.uuidString) count=\(service.characteristics?.count ?? 0) error=\(String(describing: error))"
             )
             service.characteristics?.forEach { characteristic in
@@ -315,11 +335,11 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     if characteristic.uuid == CBUUID(string: TCBConstant.uuidWrite),
                        characteristic.properties.contains(.writeWithoutResponse) {
                         writeCharacteristic = characteristic
-                        appendLog("CHAR ready write=\(characteristic.uuid.uuidString)")
+                        appendLog(.connect, "CHAR ready write=\(characteristic.uuid.uuidString)")
                     } else if characteristic.uuid == CBUUID(string: TCBConstant.uuidNotify),
                               characteristic.properties.contains(.notify) {
                         notifyCharacteristic = characteristic
-                        appendLog("CHAR ready notify=\(characteristic.uuid.uuidString)")
+                        appendLog(.notify, "CHAR ready notify=\(characteristic.uuid.uuidString)")
                         peripheral.setNotifyValue(true, for: characteristic)
                     }
                 }
@@ -333,9 +353,16 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         error: (any Error)?
     ) {
         Task { @MainActor in
-            appendLog(
+            appendLog(.notify,
                 "NOTIFY state: char=\(characteristic.uuid.uuidString) isNotifying=\(characteristic.isNotifying) error=\(String(describing: error))"
             )
+            if error == nil {
+                isNotifying = characteristic.isNotifying
+                notifyStatus = characteristic.isNotifying ? .passed : .partial
+            } else {
+                notifyStatus = .failed
+                isNotifying = false
+            }
         }
     }
 
@@ -346,9 +373,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
     ) {
         Task { @MainActor in
             let data = characteristic.value ?? Data()
-            appendLog("RX callback: char=\(characteristic.uuid.uuidString) bytes=\(data.hexString) error=\(String(describing: error))")
+            appendLog(.rx, "RX callback: char=\(characteristic.uuid.uuidString) bytes=\(data.hexString) error=\(String(describing: error))")
             let model = TCBManager.convertToModel(data: data)
-            appendLog("SDK parsed model: \(type(of: model))")
+            appendLog(.sdkParse, "SDK parsed model: \(type(of: model))")
             if let bindModel = model as? TCB02Model {
                 if pendingTcb02Action == .bind {
                     bindStatus = .passed
@@ -356,7 +383,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     unbindStatus = .passed
                 }
                 pendingTcb02Action = nil
-                appendLog(
+                appendLog(.sdkParse,
                     "SDK parsed TCB02Model: bluetoothStatus=\(bindModel.bluetoothStatus) lockStatus=\(bindModel.lockStatus) boundId=\(bindModel.boundId)"
                 )
             } else if let heartbeatModel = model as? TCB01Model {
@@ -371,7 +398,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     cruiseStatus: heartbeatModel.cruiseStatus,
                     controllerFault: heartbeatModel.controllerFault
                 )
-                appendLog(
+                appendLog(.sdkParse,
                     "SDK parsed TCB01Model: power=\(heartbeatModel.power) speed=\(heartbeatModel.realTimeSpeed) batteryVoltageRaw=\(heartbeatModel.batteryVoltage) gear=\(heartbeatModel.gear) lock=\(heartbeatModel.lockStatus) cruise=\(heartbeatModel.cruiseStatus) controllerFault=\(heartbeatModel.controllerFault)"
                 )
             }
@@ -380,7 +407,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
 
     private func send(_ data: Data) {
         guard let connectedPeripheral, let writeCharacteristic else {
-            appendLog("TX skipped: connection/characteristic not ready")
+            appendLog(.error, "TX skipped: connection/characteristic not ready")
             return
         }
         connectedPeripheral.writeValue(data, for: writeCharacteristic, type: .withoutResponse)
