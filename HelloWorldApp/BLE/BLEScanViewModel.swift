@@ -1,5 +1,6 @@
 import CoreBluetooth
 import Foundation
+import TCBleComminucation
 
 @MainActor
 final class BLEFoundationViewModel: NSObject, ObservableObject {
@@ -9,17 +10,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var logs: [ValidationLog] = []
     @Published private(set) var scanStatus: ValidationStatus = .notTested
     @Published private(set) var connectStatus: ValidationStatus = .notTested
+    @Published private(set) var bindStatus: ValidationStatus = .notTested
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
 
     private var centralManager: CBCentralManager!
     private var peripheralByID: [UUID: CBPeripheral] = [:]
     private var connectedPeripheral: CBPeripheral?
+    private var writeCharacteristic: CBCharacteristic?
+    private var notifyCharacteristic: CBCharacteristic?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
         CBUUID(string: "54430011-0153-3239-FFFF-FFFFFFF7FFFF")
     ]
+    private let validatorUserID: UInt32 = 0x272b
 
     override init() {
         super.init()
@@ -76,6 +81,22 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
         appendLog("DISCONNECT request: id=\(connectedPeripheral.identifier.uuidString)")
         centralManager.cancelPeripheralConnection(connectedPeripheral)
+    }
+
+    func bindScooter() {
+        guard writeCharacteristic != nil else {
+            appendLog("BIND failed: write characteristic not ready")
+            bindStatus = .failed
+            return
+        }
+        do {
+            let payload = try TCB02Command.writeConnect(on: true, userID: validatorUserID)
+            appendLog("TX SDK TCB02Command.writeConnect(on:true,userID:\(validatorUserID)) bytes=\(payload.hexString)")
+            send(payload)
+        } catch {
+            appendLog("BIND sdk error: \(error)")
+            bindStatus = .failed
+        }
     }
 
     private func appendLog(_ message: String) {
@@ -139,6 +160,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectStatus = .passed
             appendLog("CONNECT success: id=\(peripheral.identifier.uuidString) name=\(peripheral.name ?? "NoName")")
             peripheral.delegate = self
+            writeCharacteristic = nil
+            notifyCharacteristic = nil
             peripheral.discoverServices(nil)
         }
     }
@@ -153,6 +176,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectedDeviceID = nil
             connectionState = .disconnected
             connectStatus = .failed
+            writeCharacteristic = nil
+            notifyCharacteristic = nil
             appendLog("CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
         }
     }
@@ -166,6 +191,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             connectedPeripheral = nil
             connectedDeviceID = nil
             connectionState = .disconnected
+            writeCharacteristic = nil
+            notifyCharacteristic = nil
             appendLog("DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(String(describing: error))")
         }
     }
@@ -177,6 +204,83 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             appendLog(
                 "SERVICES discovered: id=\(peripheral.identifier.uuidString) count=\(peripheral.services?.count ?? 0) error=\(String(describing: error))"
             )
+            peripheral.services?.forEach { service in
+                peripheral.discoverCharacteristics(nil, for: service)
+            }
+        }
+    }
+
+    nonisolated func peripheral(
+        _ peripheral: CBPeripheral,
+        didDiscoverCharacteristicsFor service: CBService,
+        error: (any Error)?
+    ) {
+        Task { @MainActor in
+            appendLog(
+                "CHAR discovered: service=\(service.uuid.uuidString) count=\(service.characteristics?.count ?? 0) error=\(String(describing: error))"
+            )
+            service.characteristics?.forEach { characteristic in
+                if serviceUUIDs.contains(service.uuid) {
+                    if characteristic.uuid == CBUUID(string: TCBConstant.uuidWrite),
+                       characteristic.properties.contains(.writeWithoutResponse) {
+                        writeCharacteristic = characteristic
+                        appendLog("CHAR ready write=\(characteristic.uuid.uuidString)")
+                    } else if characteristic.uuid == CBUUID(string: TCBConstant.uuidNotify),
+                              characteristic.properties.contains(.notify) {
+                        notifyCharacteristic = characteristic
+                        appendLog("CHAR ready notify=\(characteristic.uuid.uuidString)")
+                        peripheral.setNotifyValue(true, for: characteristic)
+                    }
+                }
+            }
+        }
+    }
+
+    nonisolated func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateNotificationStateFor characteristic: CBCharacteristic,
+        error: (any Error)?
+    ) {
+        Task { @MainActor in
+            appendLog(
+                "NOTIFY state: char=\(characteristic.uuid.uuidString) isNotifying=\(characteristic.isNotifying) error=\(String(describing: error))"
+            )
+        }
+    }
+
+    nonisolated func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateValueFor characteristic: CBCharacteristic,
+        error: (any Error)?
+    ) {
+        Task { @MainActor in
+            let data = characteristic.value ?? Data()
+            appendLog("RX callback: char=\(characteristic.uuid.uuidString) bytes=\(data.hexString) error=\(String(describing: error))")
+            let model = TCBManager.convertToModel(data: data)
+            appendLog("SDK parsed model: \(type(of: model))")
+            if let bindModel = model as? TCB02Model {
+                bindStatus = .passed
+                appendLog(
+                    "SDK parsed TCB02Model: bluetoothStatus=\(bindModel.bluetoothStatus) lockStatus=\(bindModel.lockStatus) boundId=\(bindModel.boundId)"
+                )
+            }
+        }
+    }
+
+    private func send(_ data: Data) {
+        guard let connectedPeripheral, let writeCharacteristic else {
+            appendLog("TX skipped: connection/characteristic not ready")
+            return
+        }
+        connectedPeripheral.writeValue(data, for: writeCharacteristic, type: .withoutResponse)
+    }
+}
+
+private extension Data {
+    var hexString: String {
+        map { String(format: "%02X", $0) }.joined()
+    }
+}
         }
     }
 }
