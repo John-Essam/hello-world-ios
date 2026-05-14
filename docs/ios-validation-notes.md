@@ -26,6 +26,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Command TX is now gated on channel readiness (connected + vendor service discovered + write characteristic ready + notify enabled) to prevent premature bind/lock/unbind writes.
 - Real-device evidence showed `cardoOX3` can connect with services `180A` + `5443000B-...` instead of the earlier hard-coded reference UUIDs, so characteristic binding now uses official vendor write/notify UUIDs (`FFE1` / `FFE2`) across discovered services.
 - Bind investigation found parameter sensitivity per scooter/account context. Current target scooter returns `boundId=5` when bind is attempted with another ID, so iOS bind now uses `userID=5` and logs requested-vs-returned IDs for clear root-cause evidence.
+- UI/UX flow now matches validation workflow: scan/connect is isolated on a dedicated scanner screen, and successful connect navigates to a separate scooter-control/testing screen.
 
 ## Classification Rules
 
