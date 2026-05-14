@@ -43,6 +43,9 @@ struct BLEScanDevice: Identifiable {
     var rssi: Int
     var discoverCount: Int
     var lastSeen: Date
+    var isConnectable: Bool?
+    var advertisedServiceUUIDs: [String]
+    var hasVendorServiceMatch: Bool
 }
 
 struct HeartbeatSnapshot {

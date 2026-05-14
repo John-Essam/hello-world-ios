@@ -21,6 +21,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Scan now runs with duplicate coalescing (`allowDuplicates=false`) and records both total callbacks and duplicate update counters to keep validation readable.
 - Scan now auto-stops when connect is requested, and stop logs include callback/device counters for auditability.
 - Connection milestones are surfaced in UI: Scanning, Device discovered, Connecting, Connected, Notify enabled, Bound, Heartbeat receiving.
+- Connection diagnostics now include: device candidate labeling (`LIKELY SCOOTER` / `UNVERIFIED`), service list logging after connect, connect timeout handling (15s pending attempt cancel), and normalized CoreBluetooth error logging with domain/code/localized message.
 
 ## Classification Rules
 

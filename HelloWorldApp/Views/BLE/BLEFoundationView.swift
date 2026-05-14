@@ -61,6 +61,7 @@ struct BLEFoundationView: View {
                         stageRow("Device discovered", isComplete: !viewModel.devices.isEmpty)
                         stageRow("Connecting", isComplete: viewModel.connectionState == .connecting)
                         stageRow("Connected", isComplete: viewModel.hasConnectedCallback)
+                        stageRow("Vendor service discovered", isComplete: viewModel.hasVendorServiceDiscovered)
                         stageRow("Notify enabled", isComplete: viewModel.isNotifying)
                         stageRow("Bound", isComplete: viewModel.isBound)
                         stageRow("Heartbeat receiving", isComplete: viewModel.heartbeatCount > 0)
@@ -147,13 +148,17 @@ struct BLEFoundationView: View {
                                             Text(device.name)
                                                 .font(.headline)
                                             Spacer()
-                                            Text(viewModel.connectionLabel(for: device.peripheralID))
+                                        Text(viewModel.connectionLabel(for: device.peripheralID))
                                                 .font(.caption.weight(.semibold))
                                                 .padding(.horizontal, 8)
                                                 .padding(.vertical, 3)
                                                 .background(connectionPillColor(for: device.peripheralID).opacity(0.15), in: Capsule())
                                                 .foregroundStyle(connectionPillColor(for: device.peripheralID))
                                         }
+
+                                        Text("Candidate: \(viewModel.deviceCandidateLabel(for: device.peripheralID))")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(candidateColor(for: device))
 
                                         Text("Identifier: \(device.peripheralID.uuidString)")
                                             .font(.caption2)
@@ -163,6 +168,15 @@ struct BLEFoundationView: View {
                                         Text("RSSI: \(device.rssi) dBm • Discoveries: \(device.discoverCount)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                        Text("Connectable: \(connectableText(device.isConnectable))")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        if !device.advertisedServiceUUIDs.isEmpty {
+                                            Text("Adv Services: \(device.advertisedServiceUUIDs.joined(separator: ", "))")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
 
                                         HStack {
                                             if viewModel.connectedDeviceID == device.peripheralID {
@@ -176,6 +190,7 @@ struct BLEFoundationView: View {
                                                     viewModel.connect(peripheralID: device.peripheralID)
                                                 }
                                                 .buttonStyle(.borderedProminent)
+                                                .disabled(device.isConnectable == false || viewModel.connectionState == .connecting)
                                             }
                                             Spacer()
                                         }
@@ -392,6 +407,21 @@ struct BLEFoundationView: View {
         case "Connecting": return .orange
         default: return .secondary
         }
+    }
+
+    private func candidateColor(for device: BLEScanDevice) -> Color {
+        if device.hasVendorServiceMatch {
+            return .green
+        }
+        if device.isConnectable == false {
+            return .red
+        }
+        return .orange
+    }
+
+    private func connectableText(_ connectable: Bool?) -> String {
+        guard let connectable else { return "Unknown" }
+        return connectable ? "YES" : "NO"
     }
 }
 
