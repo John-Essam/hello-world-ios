@@ -24,6 +24,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Connection diagnostics now include: device candidate labeling (`LIKELY SCOOTER` / `UNVERIFIED`), service list logging after connect, connect timeout handling (15s pending attempt cancel), and normalized CoreBluetooth error logging with domain/code/localized message.
 - Scan UI now prioritizes scooter prefixes (`cardoOX1`, `cardoOX2`, `cardoOX3`) to reduce wrong-device connection attempts.
 - Command TX is now gated on channel readiness (connected + vendor service discovered + write characteristic ready + notify enabled) to prevent premature bind/lock/unbind writes.
+- Real-device evidence showed `cardoOX3` can connect with services `180A` + `5443000B-...` instead of the earlier hard-coded reference UUIDs, so characteristic binding now uses official vendor write/notify UUIDs (`FFE1` / `FFE2`) across discovered services.
 
 ## Classification Rules
 

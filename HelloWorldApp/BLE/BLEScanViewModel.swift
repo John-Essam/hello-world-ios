@@ -48,6 +48,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
         CBUUID(string: "54430011-0153-3239-FFFF-FFFFFFF7FFFF")
     ]
+    private let writeUUID = CBUUID(string: TCBConstant.uuidWrite)
+    private let notifyUUID = CBUUID(string: TCBConstant.uuidNotify)
     private let scooterNamePrefixes = ["cardoOX1", "cardoOX2", "cardoOX3"]
     private let validatorUserID: UInt32 = 0x272b
 
@@ -596,11 +598,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             )
             let discoveredServices = peripheral.services?.map(\.uuid.uuidString) ?? []
             let hasVendorService = peripheral.services?.contains(where: { serviceUUIDs.contains($0.uuid) }) ?? false
-            hasVendorServiceDiscovered = hasVendorService
             appendLog(.connect, "SERVICES list: \(discoveredServices)")
             if !hasVendorService {
-                connectStatus = .partial
-                appendLog(.error, "Connected device does not expose vendor service UUIDs. This may not be the scooter target.")
+                appendLog(.connect, "Reference vendor services not found on this device; checking characteristics globally for FFE1/FFE2")
             }
             peripheral.services?.forEach { service in
                 peripheral.discoverCharacteristics(nil, for: service)
@@ -623,30 +623,27 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             var foundWrite = false
             var foundNotify = false
             service.characteristics?.forEach { characteristic in
-                if serviceUUIDs.contains(service.uuid) {
-                    if characteristic.uuid == CBUUID(string: TCBConstant.uuidWrite),
-                       characteristic.properties.contains(.writeWithoutResponse) {
-                        writeCharacteristic = characteristic
-                        writeChannelReady = true
-                        foundWrite = true
-                        appendLog(.connect, "CHAR ready write=\(characteristic.uuid.uuidString) props=\(characteristic.properties.rawValue)")
-                    } else if characteristic.uuid == CBUUID(string: TCBConstant.uuidNotify),
-                              characteristic.properties.contains(.notify) {
-                        notifyCharacteristic = characteristic
-                        foundNotify = true
-                        appendLog(.notify, "CHAR ready notify=\(characteristic.uuid.uuidString) props=\(characteristic.properties.rawValue)")
-                        appendLog(.notify, "NOTIFY register request: char=\(characteristic.uuid.uuidString)")
-                        peripheral.setNotifyValue(true, for: characteristic)
-                    }
+                appendLog(.connect, "CHAR detail: service=\(service.uuid.uuidString) uuid=\(characteristic.uuid.uuidString) props=\(characteristic.properties.rawValue)")
+                if characteristic.uuid == writeUUID,
+                   characteristic.properties.contains(.writeWithoutResponse) {
+                    writeCharacteristic = characteristic
+                    writeChannelReady = true
+                    foundWrite = true
+                    appendLog(.connect, "CHAR ready write=\(characteristic.uuid.uuidString) service=\(service.uuid.uuidString)")
+                } else if characteristic.uuid == notifyUUID,
+                          characteristic.properties.contains(.notify) {
+                    notifyCharacteristic = characteristic
+                    foundNotify = true
+                    appendLog(.notify, "CHAR ready notify=\(characteristic.uuid.uuidString) service=\(service.uuid.uuidString)")
+                    appendLog(.notify, "NOTIFY register request: char=\(characteristic.uuid.uuidString)")
+                    peripheral.setNotifyValue(true, for: characteristic)
                 }
             }
-            if serviceUUIDs.contains(service.uuid) {
-                if !foundWrite {
-                    appendLog(.error, "WRITE characteristic not found on vendor service \(service.uuid.uuidString)")
-                }
-                if !foundNotify {
-                    appendLog(.error, "NOTIFY characteristic not found on vendor service \(service.uuid.uuidString)")
-                }
+            if foundWrite || foundNotify {
+                hasVendorServiceDiscovered = true
+            }
+            if service.characteristics?.isEmpty ?? true {
+                appendLog(.error, "No characteristics returned for service \(service.uuid.uuidString)")
             }
         }
     }
