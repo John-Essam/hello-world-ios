@@ -46,6 +46,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var bindAttemptID = UUID()
     private var bindStartedAt: Date?
     private var bindResponseCount = 0
+    private var lastBindRequestedUserID: UInt32?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -54,8 +55,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private let writeUUID = CBUUID(string: TCBConstant.uuidWrite)
     private let notifyUUID = CBUUID(string: TCBConstant.uuidNotify)
     private let scooterNamePrefixes = ["cardoOX1", "cardoOX2", "cardoOX3"]
-    // Official iOS demo path uses writeConnect(on:..., userID: 0x272b).
-    private let validatorUserID: UInt32 = 0x272b
+    // Validation target scooter is bound with ID 5 in observed RX evidence.
+    private let validatorUserID: UInt32 = 5
 
     private enum TCB02Action {
         case bind
@@ -183,6 +184,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             bindAttemptID = UUID()
             bindStartedAt = Date()
             bindResponseCount = 0
+            lastBindRequestedUserID = validatorUserID
             appendLog(.connect, "BIND sequence start: attempt=\(bindAttemptID.uuidString) notifyReady=\(notifyChannelReady) writeReady=\(writeChannelReady) vendorService=\(hasVendorServiceDiscovered)")
             let payload = try TCB02Command.writeConnect(on: true, userID: validatorUserID)
             pendingTcb02Action = .bind
@@ -729,6 +731,12 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     } else {
                         bindStatus = .partial
                         appendLog(.error, "BIND response received but bluetoothStatus=false")
+                        if let requested = lastBindRequestedUserID, bindModel.boundId != "\(requested)" {
+                            appendLog(
+                                .error,
+                                "BIND mismatch: requestedUserID=\(requested) meterBoundId=\(bindModel.boundId) (bind rejected)"
+                            )
+                        }
                     }
                 } else if pendingTcb02Action == .unbind {
                     if !bindModel.bluetoothStatus {
