@@ -14,6 +14,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var unbindStatus: ValidationStatus = .notTested
     @Published private(set) var lockStatus: ValidationStatus = .notTested
     @Published private(set) var unlockStatus: ValidationStatus = .notTested
+    @Published private(set) var cruiseControlStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -23,6 +24,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var hasVendorServiceDiscovered = false
     @Published private(set) var isBound = false
     @Published private(set) var lastKnownLockStatus: Bool?
+    @Published private(set) var lastKnownCruiseControlEnabled: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -47,6 +49,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var bindStartedAt: Date?
     private var bindResponseCount = 0
     private var lastBindRequestedUserID: UInt32?
+    private var cruiseCommandStartedAt: Date?
+    private var pendingCruiseExpectedEnabled: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -63,6 +67,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         case unbind
         case lock
         case unlock
+        case cruise
     }
 
     override init() {
@@ -267,6 +272,34 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setCruiseControl(enabled: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "CRUISE blocked: command channel not ready")
+            cruiseControlStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "CRUISE failed: write characteristic not ready")
+            cruiseControlStatus = .failed
+            return
+        }
+        do {
+            cruiseCommandStartedAt = Date()
+            pendingCruiseExpectedEnabled = enabled
+            let payload = try TCB02Command.writeCruiseControlFunction(status: enabled)
+            pendingTcb02Action = .cruise
+            appendLog(.tx, "TX SDK TCB02Command.writeCruiseControlFunction(status:\(enabled)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleCruiseDiagnostics(expectedEnabled: enabled)
+        } catch {
+            appendLog(.error, "CRUISE sdk error: \(error)")
+            cruiseControlStatus = .failed
+            pendingTcb02Action = nil
+            pendingCruiseExpectedEnabled = nil
+            cruiseCommandStartedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -336,6 +369,23 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
                 "BIND pending state: connected=\(connectionState == .connected) notifyReady=\(notifyChannelReady) writeReady=\(writeChannelReady) vendorService=\(hasVendorServiceDiscovered)"
             )
             bindStatus = .partial
+        }
+    }
+
+    private func scheduleCruiseDiagnostics(expectedEnabled: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingTcb02Action == .cruise else { return }
+            guard pendingCruiseExpectedEnabled == expectedEnabled else { return }
+            let elapsedMs = cruiseCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "CRUISE diagnostics timeout: no matching heartbeat confirmation after \(elapsedMs)ms expected=\(expectedEnabled)"
+            )
+            cruiseControlStatus = .partial
+            pendingTcb02Action = nil
+            pendingCruiseExpectedEnabled = nil
+            cruiseCommandStartedAt = nil
         }
     }
 
@@ -558,8 +608,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unbindStatus = .notTested
             lockStatus = .notTested
             unlockStatus = .notTested
+            cruiseControlStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
+            lastKnownCruiseControlEnabled = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -587,6 +639,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isBound = false
             pendingTcb02Action = nil
             bindStartedAt = nil
+            pendingCruiseExpectedEnabled = nil
+            cruiseCommandStartedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -613,6 +667,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             hasVendorServiceDiscovered = false
             pendingTcb02Action = nil
             bindStartedAt = nil
+            pendingCruiseExpectedEnabled = nil
+            cruiseCommandStartedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -719,10 +775,11 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 appendLog(.sdkParse, "BIND pending response #\(bindResponseCount): model=\(type(of: model))")
             }
             if let bindModel = model as? TCB02Model {
-                let wasBindAction = pendingTcb02Action == .bind
+                let action = pendingTcb02Action
+                let wasBindAction = action == .bind
                 isBound = bindModel.bluetoothStatus
                 lastKnownLockStatus = bindModel.lockStatus
-                if pendingTcb02Action == .bind {
+                if action == .bind {
                     let latencyMs = bindStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
                     appendLog(.sdkParse, "BIND callback: attempt=\(bindAttemptID.uuidString) latencyMs=\(latencyMs) bluetoothStatus=\(bindModel.bluetoothStatus) boundId=\(bindModel.boundId)")
                     if bindModel.bluetoothStatus {
@@ -738,7 +795,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                             )
                         }
                     }
-                } else if pendingTcb02Action == .unbind {
+                } else if action == .unbind {
                     if !bindModel.bluetoothStatus {
                         unbindStatus = .passed
                         appendLog(.sdkParse, "UNBIND result: PASSED (bluetoothStatus=false)")
@@ -746,7 +803,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         unbindStatus = .partial
                         appendLog(.error, "UNBIND response received but bluetoothStatus=true")
                     }
-                } else if pendingTcb02Action == .lock {
+                } else if action == .lock {
                     if bindModel.lockStatus {
                         lockStatus = .passed
                         appendLog(.sdkParse, "LOCK result: PASSED (lockStatus=true)")
@@ -754,7 +811,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         lockStatus = .partial
                         appendLog(.error, "LOCK response received but lockStatus=false")
                     }
-                } else if pendingTcb02Action == .unlock {
+                } else if action == .unlock {
                     if !bindModel.lockStatus {
                         unlockStatus = .passed
                         appendLog(.sdkParse, "UNLOCK result: PASSED (lockStatus=false)")
@@ -762,8 +819,12 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         unlockStatus = .partial
                         appendLog(.error, "UNLOCK response received but lockStatus=true")
                     }
+                } else if action == .cruise {
+                    appendLog(.sdkParse, "CRUISE command acknowledged via TCB02; waiting for TCB01 heartbeat confirmation")
                 }
-                pendingTcb02Action = nil
+                if action != .cruise {
+                    pendingTcb02Action = nil
+                }
                 if wasBindAction {
                     bindStartedAt = nil
                 }
@@ -775,6 +836,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 heartbeatCount += 1
                 isBound = true
                 lastKnownLockStatus = heartbeatModel.lockStatus
+                lastKnownCruiseControlEnabled = heartbeatModel.cruiseControlFunction
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -787,6 +849,25 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 appendLog(.sdkParse,
                     "SDK parsed TCB01Model: power=\(heartbeatModel.power) speed=\(heartbeatModel.realTimeSpeed) batteryVoltageRaw=\(heartbeatModel.batteryVoltage) gear=\(heartbeatModel.gear) lock=\(heartbeatModel.lockStatus) cruise=\(heartbeatModel.cruiseStatus) controllerFault=\(heartbeatModel.controllerFault)"
                 )
+                if pendingTcb02Action == .cruise {
+                    let expected = pendingCruiseExpectedEnabled
+                    let actual = heartbeatModel.cruiseControlFunction
+                    let latencyMs = cruiseCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(
+                        .sdkParse,
+                        "CRUISE callback: latencyMs=\(latencyMs) expected=\(String(describing: expected)) actual=\(actual)"
+                    )
+                    if let expected, expected == actual {
+                        cruiseControlStatus = .passed
+                        appendLog(.sdkParse, "CRUISE result: PASSED")
+                    } else {
+                        cruiseControlStatus = .partial
+                        appendLog(.error, "CRUISE heartbeat received but expected state mismatch")
+                    }
+                    pendingTcb02Action = nil
+                    pendingCruiseExpectedEnabled = nil
+                    cruiseCommandStartedAt = nil
+                }
             } else if pendingTcb02Action == .bind {
                 appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")
             }

@@ -15,6 +15,12 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | BLE Lock / Unlock | `TCB02Command.writeLockStatus(status:)` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + TX/RX logs implemented; live scooter physical reaction pending |
 | Heartbeat stream (`TCB01`) | notify callback + `TCBManager.convertToModel` (`TCB01Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 
+## Core Controls
+
+| Feature | Official iOS API / Flow | Status | Classification | Evidence |
+|---|---|---|---|---|
+| Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
+
 ## Investigation Notes (2026-05-14)
 
 - Repeated scan callbacks were caused by app configuration: `CBCentralManagerScanOptionAllowDuplicatesKey` was set to `true`, which intentionally emits a discovery callback for every advertisement packet.

@@ -262,6 +262,7 @@ private struct BLEScooterControlView: View {
         ScrollView {
             VStack(spacing: 16) {
                 connectedScooterCard
+                coreControlsCard
                 heartbeatCard
                 validationStatusCard
                 logsCard
@@ -362,6 +363,33 @@ private struct BLEScooterControlView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private var coreControlsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Core Controls")
+                .font(.headline)
+            LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
+            LabeledContent(
+                "Current Cruise State",
+                value: viewModel.lastKnownCruiseControlEnabled == nil ? "Unknown" : (viewModel.lastKnownCruiseControlEnabled == true ? "ON" : "OFF")
+            )
+            HStack {
+                Button("Cruise ON") {
+                    viewModel.setCruiseControl(enabled: true)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                Button("Cruise OFF") {
+                    viewModel.setCruiseControl(enabled: false)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private var validationStatusCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("BLE Foundation Validation")
@@ -372,6 +400,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Unbind", value: viewModel.unbindStatus.rawValue)
             LabeledContent("BLE Lock", value: viewModel.lockStatus.rawValue)
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
+            LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
