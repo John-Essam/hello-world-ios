@@ -12,6 +12,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var connectStatus: ValidationStatus = .notTested
     @Published private(set) var bindStatus: ValidationStatus = .notTested
     @Published private(set) var unbindStatus: ValidationStatus = .notTested
+    @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
+    @Published private(set) var heartbeatCount = 0
+    @Published private(set) var lastHeartbeat: HeartbeatSnapshot?
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
 
@@ -294,6 +297,21 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 pendingTcb02Action = nil
                 appendLog(
                     "SDK parsed TCB02Model: bluetoothStatus=\(bindModel.bluetoothStatus) lockStatus=\(bindModel.lockStatus) boundId=\(bindModel.boundId)"
+                )
+            } else if let heartbeatModel = model as? TCB01Model {
+                heartbeatStatus = .passed
+                heartbeatCount += 1
+                lastHeartbeat = HeartbeatSnapshot(
+                    powerPercent: heartbeatModel.power,
+                    realTimeSpeed: heartbeatModel.realTimeSpeed,
+                    batteryVoltageRaw: heartbeatModel.batteryVoltage,
+                    gear: heartbeatModel.gear,
+                    lockStatus: heartbeatModel.lockStatus,
+                    cruiseStatus: heartbeatModel.cruiseStatus,
+                    controllerFault: heartbeatModel.controllerFault
+                )
+                appendLog(
+                    "SDK parsed TCB01Model: power=\(heartbeatModel.power) speed=\(heartbeatModel.realTimeSpeed) batteryVoltageRaw=\(heartbeatModel.batteryVoltage) gear=\(heartbeatModel.gear) lock=\(heartbeatModel.lockStatus) cruise=\(heartbeatModel.cruiseStatus) controllerFault=\(heartbeatModel.controllerFault)"
                 )
             }
         }

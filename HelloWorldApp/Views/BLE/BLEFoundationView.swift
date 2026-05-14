@@ -12,6 +12,7 @@ struct BLEFoundationView: View {
                     LabeledContent("BLE Connect", value: viewModel.connectStatus.rawValue)
                     LabeledContent("BLE Bind", value: viewModel.bindStatus.rawValue)
                     LabeledContent("BLE Unbind", value: viewModel.unbindStatus.rawValue)
+                    LabeledContent("Heartbeat (TCB01)", value: viewModel.heartbeatStatus.rawValue)
                     LabeledContent("Connection", value: viewModel.connectionState.rawValue)
                     LabeledContent("Bluetooth State", value: bluetoothStateText(viewModel.bluetoothState))
                 }
@@ -32,6 +33,22 @@ struct BLEFoundationView: View {
                         viewModel.unbindScooter()
                     }
                     .disabled(viewModel.connectionState != .connected)
+                }
+
+                Section("Heartbeat Stream") {
+                    LabeledContent("Received Frames", value: "\(viewModel.heartbeatCount)")
+                    if let heartbeat = viewModel.lastHeartbeat {
+                        LabeledContent("Power", value: "\(heartbeat.powerPercent)%")
+                        LabeledContent("Speed", value: "\(heartbeat.realTimeSpeed)")
+                        LabeledContent("Battery Voltage Raw", value: "\(heartbeat.batteryVoltageRaw)")
+                        LabeledContent("Gear", value: "\(heartbeat.gear)")
+                        LabeledContent("Lock", value: heartbeat.lockStatus ? "ON" : "OFF")
+                        LabeledContent("Cruise", value: heartbeat.cruiseStatus ? "ON" : "OFF")
+                        LabeledContent("Controller Fault", value: heartbeat.controllerFault ? "TRUE" : "FALSE")
+                    } else {
+                        Text("No heartbeat parsed yet")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Discovered Devices") {

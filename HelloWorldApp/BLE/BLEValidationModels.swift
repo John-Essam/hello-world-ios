@@ -33,3 +33,13 @@ struct BLEScanDevice: Identifiable {
     var discoverCount: Int
     var lastSeen: Date
 }
+
+struct HeartbeatSnapshot {
+    let powerPercent: Int
+    let realTimeSpeed: Int
+    let batteryVoltageRaw: Int
+    let gear: Int
+    let lockStatus: Bool
+    let cruiseStatus: Bool
+    let controllerFault: Bool
+}
