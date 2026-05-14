@@ -17,6 +17,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
+    @Published private(set) var writeChannelReady = false
+    @Published private(set) var notifyChannelReady = false
     @Published private(set) var hasConnectedCallback = false
     @Published private(set) var hasVendorServiceDiscovered = false
     @Published private(set) var isBound = false
@@ -46,6 +48,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
         CBUUID(string: "54430011-0153-3239-FFFF-FFFFFFF7FFFF")
     ]
+    private let scooterNamePrefixes = ["cardoOX1", "cardoOX2", "cardoOX3"]
     private let validatorUserID: UInt32 = 0x272b
 
     private enum TCB02Action {
@@ -138,6 +141,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         connectionState = .connecting
         hasConnectedCallback = false
         hasVendorServiceDiscovered = false
+        writeChannelReady = false
+        notifyChannelReady = false
         pendingTcb02Action = nil
         connectAttemptID = UUID()
         connectStatus = .notTested
@@ -158,6 +163,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     func bindScooter() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "BIND blocked: command channel not ready")
+            bindStatus = .failed
+            return
+        }
         guard writeCharacteristic != nil else {
             appendLog(.error, "BIND failed: write characteristic not ready")
             bindStatus = .failed
@@ -176,6 +186,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     func unbindScooter() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "UNBIND blocked: command channel not ready")
+            unbindStatus = .failed
+            return
+        }
         guard writeCharacteristic != nil else {
             appendLog(.error, "UNBIND failed: write characteristic not ready")
             unbindStatus = .failed
@@ -194,6 +209,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     func lockScooter() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "LOCK blocked: command channel not ready")
+            lockStatus = .failed
+            return
+        }
         guard writeCharacteristic != nil else {
             appendLog(.error, "LOCK failed: write characteristic not ready")
             lockStatus = .failed
@@ -212,6 +232,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     func unlockScooter() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "UNLOCK blocked: command channel not ready")
+            unlockStatus = .failed
+            return
+        }
         guard writeCharacteristic != nil else {
             appendLog(.error, "UNLOCK failed: write characteristic not ready")
             unlockStatus = .failed
@@ -264,6 +289,22 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             connectionState = .disconnected
             connectingDeviceID = nil
             connectStatus = .failed
+        }
+    }
+
+    private func scheduleChannelReadinessDiagnostics(for peripheralID: UUID, attemptID: UUID) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard attemptID == connectAttemptID else { return }
+            guard connectedDeviceID == peripheralID, connectionState == .connected else { return }
+            appendLog(
+                .connect,
+                "CHANNEL diagnostics: connected=\(hasConnectedCallback) vendorService=\(hasVendorServiceDiscovered) writeReady=\(writeChannelReady) notifyReady=\(notifyChannelReady) commandReady=\(isCommandChannelReady)"
+            )
+            if !isCommandChannelReady {
+                appendLog(.error, "Connected callback fired but BLE channels are not fully ready yet")
+                connectStatus = .partial
+            }
         }
     }
 
@@ -325,6 +366,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         return lastKnownLockStatus ? "Locked" : "Unlocked"
     }
 
+    var isCommandChannelReady: Bool {
+        connectionState == .connected && hasVendorServiceDiscovered && writeChannelReady && notifyChannelReady
+    }
+
     var bluetoothAuthorizationLabel: String {
         switch CBManager.authorization {
         case .allowedAlways: return "Allowed"
@@ -354,6 +399,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     func deviceCandidateLabel(for deviceID: UUID) -> String {
         guard let device = devices.first(where: { $0.peripheralID == deviceID }) else {
             return "UNKNOWN"
+        }
+        if device.hasScooterNamePrefix {
+            return "LIKELY SCOOTER"
         }
         if device.hasVendorServiceMatch {
             return "LIKELY SCOOTER"
@@ -414,6 +462,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
                 devices[index].isConnectable = connectable
                 devices[index].advertisedServiceUUIDs = advServiceUUIDs.map(\.uuidString)
                 devices[index].hasVendorServiceMatch = !Set(advServiceUUIDs).isDisjoint(with: Set(serviceUUIDs))
+                devices[index].hasScooterNamePrefix = hasScooterPrefix(name)
                 scanDuplicateCallbackCount += 1
                 if devices[index].discoverCount == 5 || devices[index].discoverCount % 20 == 0 {
                     appendLog(.scan, "SCAN advertisement update: name=\(name) id=\(id.uuidString) rssi=\(rssi) seen=\(devices[index].discoverCount)")
@@ -430,12 +479,19 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
                         lastSeen: Date(),
                         isConnectable: connectable,
                         advertisedServiceUUIDs: advServiceUUIDs.map(\.uuidString),
-                        hasVendorServiceMatch: hasVendorService
+                        hasVendorServiceMatch: hasVendorService,
+                        hasScooterNamePrefix: hasScooterPrefix(name)
                     )
                 )
             }
 
-            devices.sort { $0.rssi > $1.rssi }
+            devices.sort { lhs, rhs in
+                let lScore = candidatePriorityScore(for: lhs)
+                let rScore = candidatePriorityScore(for: rhs)
+                if lScore != rScore { return lScore > rScore }
+                if lhs.rssi != rhs.rssi { return lhs.rssi > rhs.rssi }
+                return lhs.name < rhs.name
+            }
             if devices.contains(where: { $0.peripheralID == id && $0.discoverCount == 1 }) {
                 appendLog(
                     .scan,
@@ -462,6 +518,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             notifyCharacteristic = nil
             notifyStatus = .notTested
             isNotifying = false
+            writeChannelReady = false
+            notifyChannelReady = false
             hasVendorServiceDiscovered = false
             heartbeatCount = 0
             heartbeatStatus = .notTested
@@ -472,6 +530,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isBound = false
             lastKnownLockStatus = nil
             peripheral.discoverServices(nil)
+            scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
     }
 
@@ -492,6 +551,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             notifyCharacteristic = nil
             notifyStatus = .failed
             isNotifying = false
+            writeChannelReady = false
+            notifyChannelReady = false
             isBound = false
             pendingTcb02Action = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
@@ -514,6 +575,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             notifyCharacteristic = nil
             notifyStatus = .notTested
             isNotifying = false
+            writeChannelReady = false
+            notifyChannelReady = false
             isBound = false
             hasVendorServiceDiscovered = false
             pendingTcb02Action = nil
@@ -557,19 +620,32 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             appendLog(.connect,
                 "CHAR discovered: service=\(service.uuid.uuidString) count=\(service.characteristics?.count ?? 0) error=\(String(describing: error))"
             )
+            var foundWrite = false
+            var foundNotify = false
             service.characteristics?.forEach { characteristic in
                 if serviceUUIDs.contains(service.uuid) {
                     if characteristic.uuid == CBUUID(string: TCBConstant.uuidWrite),
                        characteristic.properties.contains(.writeWithoutResponse) {
                         writeCharacteristic = characteristic
+                        writeChannelReady = true
+                        foundWrite = true
                         appendLog(.connect, "CHAR ready write=\(characteristic.uuid.uuidString) props=\(characteristic.properties.rawValue)")
                     } else if characteristic.uuid == CBUUID(string: TCBConstant.uuidNotify),
                               characteristic.properties.contains(.notify) {
                         notifyCharacteristic = characteristic
+                        foundNotify = true
                         appendLog(.notify, "CHAR ready notify=\(characteristic.uuid.uuidString) props=\(characteristic.properties.rawValue)")
                         appendLog(.notify, "NOTIFY register request: char=\(characteristic.uuid.uuidString)")
                         peripheral.setNotifyValue(true, for: characteristic)
                     }
+                }
+            }
+            if serviceUUIDs.contains(service.uuid) {
+                if !foundWrite {
+                    appendLog(.error, "WRITE characteristic not found on vendor service \(service.uuid.uuidString)")
+                }
+                if !foundNotify {
+                    appendLog(.error, "NOTIFY characteristic not found on vendor service \(service.uuid.uuidString)")
                 }
             }
         }
@@ -587,9 +663,11 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             if error == nil {
                 isNotifying = characteristic.isNotifying
                 notifyStatus = characteristic.isNotifying ? .passed : .partial
+                notifyChannelReady = characteristic.isNotifying
             } else {
                 notifyStatus = .failed
                 isNotifying = false
+                notifyChannelReady = false
             }
         }
     }
@@ -614,6 +692,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 if pendingTcb02Action == .bind {
                     if bindModel.bluetoothStatus {
                         bindStatus = .passed
+                        appendLog(.sdkParse, "BIND result: PASSED (bluetoothStatus=true)")
                     } else {
                         bindStatus = .partial
                         appendLog(.error, "BIND response received but bluetoothStatus=false")
@@ -621,6 +700,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 } else if pendingTcb02Action == .unbind {
                     if !bindModel.bluetoothStatus {
                         unbindStatus = .passed
+                        appendLog(.sdkParse, "UNBIND result: PASSED (bluetoothStatus=false)")
                     } else {
                         unbindStatus = .partial
                         appendLog(.error, "UNBIND response received but bluetoothStatus=true")
@@ -628,6 +708,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 } else if pendingTcb02Action == .lock {
                     if bindModel.lockStatus {
                         lockStatus = .passed
+                        appendLog(.sdkParse, "LOCK result: PASSED (lockStatus=true)")
                     } else {
                         lockStatus = .partial
                         appendLog(.error, "LOCK response received but lockStatus=false")
@@ -635,6 +716,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 } else if pendingTcb02Action == .unlock {
                     if !bindModel.lockStatus {
                         unlockStatus = .passed
+                        appendLog(.sdkParse, "UNLOCK result: PASSED (lockStatus=false)")
                     } else {
                         unlockStatus = .partial
                         appendLog(.error, "UNLOCK response received but lockStatus=true")
@@ -666,17 +748,38 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
     }
 
     private func send(_ data: Data) {
+        guard isCommandChannelReady else {
+            appendLog(
+                .error,
+                "TX blocked: channel not ready connected=\(connectionState == .connected) vendorService=\(hasVendorServiceDiscovered) writeReady=\(writeChannelReady) notifyReady=\(notifyChannelReady)"
+            )
+            return
+        }
         guard let connectedPeripheral, let writeCharacteristic else {
             appendLog(.error, "TX skipped: connection/characteristic not ready")
             return
         }
         connectedPeripheral.writeValue(data, for: writeCharacteristic, type: .withoutResponse)
+        appendLog(.tx, "TX write dispatched to char=\(writeCharacteristic.uuid.uuidString)")
     }
 
     private func describe(_ error: (any Error)?) -> String {
         guard let error else { return "nil" }
         let nsError = error as NSError
         return "domain=\(nsError.domain) code=\(nsError.code) localized=\(nsError.localizedDescription)"
+    }
+
+    private func hasScooterPrefix(_ name: String) -> Bool {
+        scooterNamePrefixes.contains(where: { prefix in
+            name.lowercased().hasPrefix(prefix.lowercased())
+        })
+    }
+
+    private func candidatePriorityScore(for device: BLEScanDevice) -> Int {
+        if device.hasScooterNamePrefix { return 3 }
+        if device.hasVendorServiceMatch { return 2 }
+        if device.isConnectable == true { return 1 }
+        return 0
     }
 }
 

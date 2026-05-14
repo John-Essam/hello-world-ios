@@ -22,6 +22,8 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Scan now auto-stops when connect is requested, and stop logs include callback/device counters for auditability.
 - Connection milestones are surfaced in UI: Scanning, Device discovered, Connecting, Connected, Notify enabled, Bound, Heartbeat receiving.
 - Connection diagnostics now include: device candidate labeling (`LIKELY SCOOTER` / `UNVERIFIED`), service list logging after connect, connect timeout handling (15s pending attempt cancel), and normalized CoreBluetooth error logging with domain/code/localized message.
+- Scan UI now prioritizes scooter prefixes (`cardoOX1`, `cardoOX2`, `cardoOX3`) to reduce wrong-device connection attempts.
+- Command TX is now gated on channel readiness (connected + vendor service discovered + write characteristic ready + notify enabled) to prevent premature bind/lock/unbind writes.
 
 ## Classification Rules
 

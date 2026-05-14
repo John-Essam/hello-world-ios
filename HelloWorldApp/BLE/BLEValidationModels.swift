@@ -46,6 +46,7 @@ struct BLEScanDevice: Identifiable {
     var isConnectable: Bool?
     var advertisedServiceUUIDs: [String]
     var hasVendorServiceMatch: Bool
+    var hasScooterNamePrefix: Bool
 }
 
 struct HeartbeatSnapshot {

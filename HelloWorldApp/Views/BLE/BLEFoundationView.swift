@@ -3,36 +3,20 @@ import SwiftUI
 
 struct BLEFoundationView: View {
     @StateObject private var viewModel = BLEFoundationViewModel()
-    @State private var showScanSection = true
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    if viewModel.connectionState == .connected {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Scan Section")
-                                    .font(.headline)
-                                Spacer()
-                                Button(showScanSection ? "Collapse" : "Show") {
-                                    showScanSection.toggle()
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                            }
-                            if showScanSection {
-                                scanCard
-                            } else {
-                                Text("Hidden while connected to speed up testing.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(16)
-                        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    } else {
+                    if viewModel.connectionState != .connected {
                         scanCard
+                    } else {
+                        HStack {
+                            Text("Scan section hidden while connected.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
                     }
 
                     if viewModel.connectionState == .connected {
@@ -62,8 +46,9 @@ struct BLEFoundationView: View {
                         stageRow("Connecting", isComplete: viewModel.connectionState == .connecting)
                         stageRow("Connected", isComplete: viewModel.hasConnectedCallback)
                         stageRow("Vendor service discovered", isComplete: viewModel.hasVendorServiceDiscovered)
-                        stageRow("Notify enabled", isComplete: viewModel.isNotifying)
-                        stageRow("Bound", isComplete: viewModel.isBound)
+                        stageRow("Notify ready", isComplete: viewModel.notifyChannelReady)
+                        stageRow("Write ready", isComplete: viewModel.writeChannelReady)
+                        stageRow("Authenticated", isComplete: viewModel.isBound)
                         stageRow("Heartbeat receiving", isComplete: viewModel.heartbeatCount > 0)
                     }
                     .padding(16)
@@ -100,7 +85,7 @@ struct BLEFoundationView: View {
                                 .padding(.vertical, 4)
                                 .background(Color.secondary.opacity(0.12), in: Capsule())
                         }
-                        Text("MAC is not exposed by iOS; identifier is shown for validation.")
+                        Text("Scooters are prioritized by name prefix: cardoOX1 / cardoOX2 / cardoOX3.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
@@ -137,16 +122,16 @@ struct BLEFoundationView: View {
                         } else {
                             LazyVStack(spacing: 10) {
                                 ForEach(viewModel.devices) { device in
-                                HStack(alignment: .top, spacing: 12) {
+                                HStack(alignment: .top, spacing: 14) {
                                     Image(systemName: "scooter")
-                                        .font(.title3)
-                                        .foregroundStyle(.blue)
+                                        .font(.title2)
+                                        .foregroundStyle(device.hasScooterNamePrefix ? .green : .blue)
                                         .padding(.top, 2)
 
-                                    VStack(alignment: .leading, spacing: 6) {
+                                    VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Text(device.name)
-                                                .font(.headline)
+                                                .font(.title3.weight(.semibold))
                                             Spacer()
                                         Text(viewModel.connectionLabel(for: device.peripheralID))
                                                 .font(.caption.weight(.semibold))
@@ -159,9 +144,14 @@ struct BLEFoundationView: View {
                                         Text("Candidate: \(viewModel.deviceCandidateLabel(for: device.peripheralID))")
                                             .font(.caption2.weight(.semibold))
                                             .foregroundStyle(candidateColor(for: device))
+                                        if device.hasScooterNamePrefix {
+                                            Text("Scooter prefix match")
+                                                .font(.caption2.weight(.semibold))
+                                                .foregroundStyle(.green)
+                                        }
 
                                         Text("Identifier: \(device.peripheralID.uuidString)")
-                                            .font(.caption2)
+                                            .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .textSelection(.enabled)
 
@@ -196,7 +186,7 @@ struct BLEFoundationView: View {
                                         }
                                     }
                                 }
-                                .padding(12)
+                                .padding(16)
                                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             }
@@ -240,11 +230,6 @@ struct BLEFoundationView: View {
             }
             .navigationTitle("BLE Foundation")
             .background(Color(.systemGroupedBackground))
-            .onChange(of: viewModel.connectionState) { _, newState in
-                if newState == .connected {
-                    showScanSection = false
-                }
-            }
         }
     }
 
@@ -265,6 +250,8 @@ struct BLEFoundationView: View {
                         .controlSize(.regular)
                 }
             }
+
+            liveStatusBadges
 
             VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("Scan State", value: viewModel.scanStateLabel)
@@ -303,6 +290,7 @@ struct BLEFoundationView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Connected Scooter")
                 .font(.headline)
+            liveStatusBadges
 
             if let device = viewModel.connectedDevice {
                 Text(device.name)
@@ -321,6 +309,8 @@ struct BLEFoundationView: View {
             LabeledContent("Bind Status", value: viewModel.bindStatus.rawValue)
             LabeledContent("Notify Status", value: viewModel.notifyStatus.rawValue)
             LabeledContent("Notify Enabled", value: viewModel.isNotifying ? "YES" : "NO")
+            LabeledContent("Write Channel Ready", value: viewModel.writeChannelReady ? "YES" : "NO")
+            LabeledContent("Command Channel Ready", value: viewModel.isCommandChannelReady ? "YES" : "NO")
             LabeledContent("Bound", value: viewModel.isBound ? "YES" : "NO")
             LabeledContent("Lock State", value: viewModel.lockStateLabel)
             LabeledContent("Heartbeat Status", value: viewModel.heartbeatStatus.rawValue)
@@ -331,11 +321,13 @@ struct BLEFoundationView: View {
                     viewModel.bindScooter()
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.isCommandChannelReady)
 
                 Button("Unbind (TCB02)") {
                     viewModel.unbindScooter()
                 }
                 .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
             }
 
             HStack {
@@ -344,11 +336,13 @@ struct BLEFoundationView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
+                .disabled(!viewModel.isCommandChannelReady)
 
                 Button("Unlock") {
                     viewModel.unlockScooter()
                 }
                 .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
 
                 Button("Disconnect") {
                     viewModel.disconnect()
@@ -359,6 +353,16 @@ struct BLEFoundationView: View {
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var liveStatusBadges: some View {
+        HStack(spacing: 8) {
+            statusBadge("SCANNING", active: viewModel.isScanning, color: .blue)
+            statusBadge("CONNECTING", active: viewModel.connectionState == .connecting, color: .orange)
+            statusBadge("CONNECTED", active: viewModel.connectionState == .connected, color: .green)
+            statusBadge("NOTIFY READY", active: viewModel.notifyChannelReady, color: .mint)
+            statusBadge("AUTHENTICATED", active: viewModel.isBound, color: .purple)
+        }
     }
 
     private var statusColor: Color {
@@ -388,6 +392,15 @@ struct BLEFoundationView: View {
         }
     }
 
+    private func statusBadge(_ title: String, active: Bool, color: Color) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background((active ? color : .secondary).opacity(0.15), in: Capsule())
+            .foregroundStyle(active ? color : .secondary)
+    }
+
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {
         switch category {
         case .scan: return .blue
@@ -410,6 +423,9 @@ struct BLEFoundationView: View {
     }
 
     private func candidateColor(for device: BLEScanDevice) -> Color {
+        if device.hasScooterNamePrefix {
+            return .green
+        }
         if device.hasVendorServiceMatch {
             return .green
         }
