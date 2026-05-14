@@ -8,7 +8,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 
 | Feature | Official iOS API / Flow | Status | Classification | Evidence |
 |---|---|---|---|---|
-| BLE Scan | `CBCentralManager.scanForPeripherals(withServices:options:)` with vendor service UUIDs | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
+| BLE Scan | `CBCentralManager.scanForPeripherals(withServices:options:)` (broad scan `nil`, vendor UUIDs logged for diagnosis) | PARTIAL | IMPLEMENTATION_ISSUE | Initial implementation filtered by vendor service UUIDs and could hide valid peripherals if advertisements omit those UUIDs. Added callback/permission/filter diagnostics and broad official CoreBluetooth scan; live scooter retest pending. |
 | BLE Connect / Disconnect | `CBCentralManager.connect`, `CBCentralManager.cancelPeripheralConnection`, `CBPeripheral.discoverServices` | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Authentication (Bind) | `TCB02Command.writeConnect(on:userID:isReset:)` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Unbind | `TCB02Command.readUnbind()` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |

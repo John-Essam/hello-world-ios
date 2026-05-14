@@ -16,12 +16,15 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
     @Published private(set) var heartbeatCount = 0
+    @Published private(set) var scanCallbackCount = 0
     @Published private(set) var lastHeartbeat: HeartbeatSnapshot?
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
     @Published private(set) var connectingDeviceID: UUID?
     @Published private(set) var hasScanAttempted = false
     @Published private(set) var lastScanError: String?
+    @Published private(set) var scanFilterLabel = "All BLE Services"
+    @Published private(set) var runtimeEnvironment = "Device"
 
     private var centralManager: CBCentralManager!
     private var peripheralByID: [UUID: CBPeripheral] = [:]
@@ -29,6 +32,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var writeCharacteristic: CBCharacteristic?
     private var notifyCharacteristic: CBCharacteristic?
     private var pendingTcb02Action: TCB02Action?
+    private var scanSessionID = UUID()
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -43,6 +47,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        #if targetEnvironment(simulator)
+        runtimeEnvironment = "Simulator"
+        #else
+        runtimeEnvironment = "Device"
+        #endif
         centralManager = CBCentralManager(
             delegate: self,
             queue: nil,
@@ -70,10 +79,19 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
 
         lastScanError = nil
         devices.removeAll()
+        scanCallbackCount = 0
+        scanFilterLabel = "All BLE Services"
+        scanSessionID = UUID()
         let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: true]
-        centralManager.scanForPeripherals(withServices: serviceUUIDs, options: options)
+        centralManager.scanForPeripherals(withServices: nil, options: options)
         isScanning = true
-        appendLog(.scan, "SCAN API started: services=\(serviceUUIDs.map(\.uuidString).joined(separator: ","))")
+        appendLog(.scan, "SCAN API started: services=nil (all peripherals)")
+        appendLog(.scan, "Vendor reference service UUIDs: \(serviceUUIDs.map(\.uuidString).joined(separator: ","))")
+        appendLog(.scan, "Authorization=\(bluetoothAuthorizationLabel) plistKeysPresent=\(hasBluetoothUsageDescriptions) runtime=\(runtimeEnvironment)")
+        if !hasBluetoothUsageDescriptions {
+            appendLog(.error, "Info.plist BLE usage keys missing; iOS may suppress permission prompts/results.")
+        }
+        scheduleScanDiagnostics(for: scanSessionID)
     }
 
     private func stopScan() {
@@ -146,6 +164,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleScanDiagnostics(for sessionID: UUID) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            guard sessionID == scanSessionID, isScanning else { return }
+            if scanCallbackCount == 0 {
+                appendLog(.error, "SCAN diagnostics: no scan callbacks received after 8s")
+                appendLog(.error, "Possible causes: no BLE advertisements nearby, scooter not advertising now, or iOS radio/environment constraints")
+            } else if devices.isEmpty {
+                appendLog(.error, "SCAN diagnostics: callbacks received but device list is empty (possible UI/filtering issue)")
+            } else {
+                appendLog(.scan, "SCAN diagnostics: callbacks=\(scanCallbackCount), devices=\(devices.count)")
+            }
+        }
+    }
+
     var bluetoothStateLabel: String {
         switch bluetoothState {
         case .unknown: return "Unknown"
@@ -184,6 +217,35 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             return "Devices found: \(devices.count)"
         }
         return "Ready to scan"
+    }
+
+    var scanStateLabel: String {
+        if connectionState == .connected {
+            return "Connected"
+        }
+        if connectionState == .connecting {
+            return "Connecting"
+        }
+        if isScanning {
+            return devices.isEmpty ? "Scanning" : "Devices Found"
+        }
+        return "Idle"
+    }
+
+    var bluetoothAuthorizationLabel: String {
+        switch CBManager.authorization {
+        case .allowedAlways: return "Allowed"
+        case .denied: return "Denied"
+        case .restricted: return "Restricted"
+        case .notDetermined: return "Not Determined"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    var hasBluetoothUsageDescriptions: Bool {
+        let always = Bundle.main.object(forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription") as? String
+        let peripheral = Bundle.main.object(forInfoDictionaryKey: "NSBluetoothPeripheralUsageDescription") as? String
+        return !(always?.isEmpty ?? true) && !(peripheral?.isEmpty ?? true)
     }
 
     func connectionLabel(for deviceID: UUID) -> String {
@@ -229,6 +291,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
                 ?? "NoName"
             let id = peripheral.identifier
             let rssi = RSSI.intValue
+            let advServiceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+            let advOverflowUUIDs = (advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID]) ?? []
+            let connectable = (advertisementData[CBAdvertisementDataIsConnectable] as? NSNumber)?.boolValue
+            scanCallbackCount += 1
 
             if let index = devices.firstIndex(where: { $0.peripheralID == id }) {
                 devices[index].name = name
@@ -249,7 +315,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             }
 
             devices.sort { $0.rssi > $1.rssi }
-            appendLog(.scan, "SCAN callback fired: name=\(name) id=\(id.uuidString) rssi=\(rssi)")
+            appendLog(
+                .scan,
+                "SCAN callback triggered: name=\(name) id=\(id.uuidString) rssi=\(rssi) connectable=\(String(describing: connectable)) advServices=\(advServiceUUIDs.map(\.uuidString)) overflowServices=\(advOverflowUUIDs.map(\.uuidString))"
+            )
+            appendLog(.scan, "Device discovered: name=\(name), rssi=\(rssi), identifier=\(id.uuidString)")
             scanStatus = .passed
         }
     }

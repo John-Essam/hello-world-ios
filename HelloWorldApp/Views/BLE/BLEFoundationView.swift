@@ -87,14 +87,35 @@ struct BLEFoundationView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
+                        Text("Scan callbacks: \(viewModel.scanCallbackCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 2)
 
                         if viewModel.devices.isEmpty {
-                            Text("No nearby devices discovered yet.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical, 8)
+                            VStack(alignment: .leading, spacing: 6) {
+                                if viewModel.isScanning {
+                                    Text("Scanning nearby BLE advertisements...")
+                                        .font(.subheadline.weight(.medium))
+                                    Text("If this stays empty, check SCAN logs for callback count and permission status.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else if viewModel.hasScanAttempted {
+                                    Text("No devices found")
+                                        .font(.subheadline.weight(.medium))
+                                    Text("No BLE advertisements were added to the list during the last scan.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Press Start Scan to discover nearby BLE devices.")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 8)
                         } else {
-                            ForEach(viewModel.devices) { device in
+                            LazyVStack(spacing: 10) {
+                                ForEach(viewModel.devices) { device in
                                 HStack(alignment: .top, spacing: 12) {
                                     Image(systemName: "scooter")
                                         .font(.title3)
@@ -142,6 +163,7 @@ struct BLEFoundationView: View {
                                 }
                                 .padding(12)
                                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
                             }
                         }
                     }
@@ -209,9 +231,16 @@ struct BLEFoundationView: View {
                 }
             }
 
-            Text("Bluetooth: \(viewModel.bluetoothStateLabel)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                LabeledContent("Scan State", value: viewModel.scanStateLabel)
+                LabeledContent("Bluetooth", value: viewModel.bluetoothStateLabel)
+                LabeledContent("Authorization", value: viewModel.bluetoothAuthorizationLabel)
+                LabeledContent("Info.plist BLE Keys", value: viewModel.hasBluetoothUsageDescriptions ? "Present" : "Missing")
+                LabeledContent("Runtime", value: viewModel.runtimeEnvironment)
+                LabeledContent("Scan Filter", value: viewModel.scanFilterLabel)
+                LabeledContent("Scan Callbacks", value: "\(viewModel.scanCallbackCount)")
+            }
+            .font(.subheadline)
 
             if let error = viewModel.lastScanError {
                 Text(error)
