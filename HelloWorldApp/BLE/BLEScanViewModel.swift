@@ -11,6 +11,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var scanStatus: ValidationStatus = .notTested
     @Published private(set) var connectStatus: ValidationStatus = .notTested
     @Published private(set) var bindStatus: ValidationStatus = .notTested
+    @Published private(set) var unbindStatus: ValidationStatus = .notTested
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
 
@@ -19,12 +20,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var connectedPeripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var notifyCharacteristic: CBCharacteristic?
+    private var pendingTcb02Action: TCB02Action?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
         CBUUID(string: "54430011-0153-3239-FFFF-FFFFFFF7FFFF")
     ]
     private let validatorUserID: UInt32 = 0x272b
+
+    private enum TCB02Action {
+        case bind
+        case unbind
+    }
 
     override init() {
         super.init()
@@ -91,11 +98,31 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
         do {
             let payload = try TCB02Command.writeConnect(on: true, userID: validatorUserID)
+            pendingTcb02Action = .bind
             appendLog("TX SDK TCB02Command.writeConnect(on:true,userID:\(validatorUserID)) bytes=\(payload.hexString)")
             send(payload)
         } catch {
             appendLog("BIND sdk error: \(error)")
             bindStatus = .failed
+            pendingTcb02Action = nil
+        }
+    }
+
+    func unbindScooter() {
+        guard writeCharacteristic != nil else {
+            appendLog("UNBIND failed: write characteristic not ready")
+            unbindStatus = .failed
+            return
+        }
+        do {
+            let payload = try TCB02Command.readUnbind()
+            pendingTcb02Action = .unbind
+            appendLog("TX SDK TCB02Command.readUnbind() bytes=\(payload.hexString)")
+            send(payload)
+        } catch {
+            appendLog("UNBIND sdk error: \(error)")
+            unbindStatus = .failed
+            pendingTcb02Action = nil
         }
     }
 
@@ -259,7 +286,12 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             let model = TCBManager.convertToModel(data: data)
             appendLog("SDK parsed model: \(type(of: model))")
             if let bindModel = model as? TCB02Model {
-                bindStatus = .passed
+                if pendingTcb02Action == .bind {
+                    bindStatus = .passed
+                } else if pendingTcb02Action == .unbind {
+                    unbindStatus = .passed
+                }
+                pendingTcb02Action = nil
                 appendLog(
                     "SDK parsed TCB02Model: bluetoothStatus=\(bindModel.bluetoothStatus) lockStatus=\(bindModel.lockStatus) boundId=\(bindModel.boundId)"
                 )

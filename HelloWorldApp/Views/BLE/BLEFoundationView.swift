@@ -11,6 +11,7 @@ struct BLEFoundationView: View {
                     LabeledContent("BLE Scan", value: viewModel.scanStatus.rawValue)
                     LabeledContent("BLE Connect", value: viewModel.connectStatus.rawValue)
                     LabeledContent("BLE Bind", value: viewModel.bindStatus.rawValue)
+                    LabeledContent("BLE Unbind", value: viewModel.unbindStatus.rawValue)
                     LabeledContent("Connection", value: viewModel.connectionState.rawValue)
                     LabeledContent("Bluetooth State", value: bluetoothStateText(viewModel.bluetoothState))
                 }
@@ -24,6 +25,11 @@ struct BLEFoundationView: View {
                 Section("Authentication") {
                     Button("Bind (TCB02)") {
                         viewModel.bindScooter()
+                    }
+                    .disabled(viewModel.connectionState != .connected)
+
+                    Button("Unbind (TCB02)") {
+                        viewModel.unbindScooter()
                     }
                     .disabled(viewModel.connectionState != .connected)
                 }

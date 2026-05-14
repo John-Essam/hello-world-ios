@@ -11,7 +11,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | BLE Scan | `CBCentralManager.scanForPeripherals(withServices:options:)` with vendor service UUIDs | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Connect / Disconnect | `CBCentralManager.connect`, `CBCentralManager.cancelPeripheralConnection`, `CBPeripheral.discoverServices` | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Authentication (Bind) | `TCB02Command.writeConnect(on:userID:isReset:)` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
-| BLE Unbind | Pending implementation | NOT_TESTED | - | - |
+| BLE Unbind | `TCB02Command.readUnbind()` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | Heartbeat stream (`TCB01`) | Pending implementation | NOT_TESTED | - | - |
 
 ## Classification Rules
