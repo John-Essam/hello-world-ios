@@ -7,7 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		47359710831FC30A24C60201 /* BLEScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4A1DDCFAAB9F140071D3FD /* BLEScanViewModel.swift */; };
+		9BEE162431830C3F1EB0E920 /* BLEValidationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E95097390226E035160D60 /* BLEValidationModels.swift */; };
 		A9F429548270D9618FC09C29 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EC312E8A5E6698C3629FCE /* ContentView.swift */; };
+		D979496EDE3931D1DAD2B9C1 /* TCBleComminucation in Frameworks */ = {isa = PBXBuildFile; productRef = 3FF5E431C0D454FB679C9838 /* TCBleComminucation */; };
+		EF0F1B5F11DDE9E9EF4D0309 /* BLEFoundationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E302E5AA73563D956E2B0D /* BLEFoundationView.swift */; };
 		F2A8654FF6D31F2D8D1C7448 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 001E136A33D0653E1B8179F2 /* Assets.xcassets */; };
 		F4EB727ADD7840A9C01A0911 /* HelloWorldAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 609AADBBB7EAAAACF92EBCB4 /* HelloWorldAppApp.swift */; };
 /* End PBXBuildFile section */
@@ -15,9 +19,24 @@
 /* Begin PBXFileReference section */
 		001E136A33D0653E1B8179F2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2C3722B1F864A52E959CA8E4 /* HelloWorldApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HelloWorldApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4936786CB69E13B65A19F63B /* TCBleComminucation */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TCBleComminucation; path = Vendor/TCBleComminucation; sourceTree = SOURCE_ROOT; };
+		4A4A1DDCFAAB9F140071D3FD /* BLEScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScanViewModel.swift; sourceTree = "<group>"; };
 		609AADBBB7EAAAACF92EBCB4 /* HelloWorldAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelloWorldAppApp.swift; sourceTree = "<group>"; };
+		D7E302E5AA73563D956E2B0D /* BLEFoundationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEFoundationView.swift; sourceTree = "<group>"; };
 		D7EC312E8A5E6698C3629FCE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E2E95097390226E035160D60 /* BLEValidationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEValidationModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		16A0A774DFC5BF333A11CA92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D979496EDE3931D1DAD2B9C1 /* TCBleComminucation in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		009ABA45E36D902AE882EA53 /* Products */ = {
@@ -28,10 +47,20 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		3BBC40118178DDB666243F1F /* BLE */ = {
+			isa = PBXGroup;
+			children = (
+				4A4A1DDCFAAB9F140071D3FD /* BLEScanViewModel.swift */,
+				E2E95097390226E035160D60 /* BLEValidationModels.swift */,
+			);
+			path = BLE;
+			sourceTree = "<group>";
+		};
 		4903DFE82568EBAAE0085088 = {
 			isa = PBXGroup;
 			children = (
 				4C01FAB7A88D6B8910EBE18C /* HelloWorldApp */,
+				FC05337FB123A09EE7617B17 /* Packages */,
 				009ABA45E36D902AE882EA53 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +70,7 @@
 			children = (
 				001E136A33D0653E1B8179F2 /* Assets.xcassets */,
 				501D668E43A3F51A72A9178C /* App */,
+				3BBC40118178DDB666243F1F /* BLE */,
 				CCE916289484A24AB4FAE0D8 /* Views */,
 			);
 			path = HelloWorldApp;
@@ -54,12 +84,29 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		60DBD772122A2F5CD741651F /* BLE */ = {
+			isa = PBXGroup;
+			children = (
+				D7E302E5AA73563D956E2B0D /* BLEFoundationView.swift */,
+			);
+			path = BLE;
+			sourceTree = "<group>";
+		};
 		CCE916289484A24AB4FAE0D8 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				D7EC312E8A5E6698C3629FCE /* ContentView.swift */,
+				60DBD772122A2F5CD741651F /* BLE */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		FC05337FB123A09EE7617B17 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				4936786CB69E13B65A19F63B /* TCBleComminucation */,
+			);
+			name = Packages;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -71,6 +118,7 @@
 			buildPhases = (
 				721CA34F46434289743797AA /* Sources */,
 				9FE47C5C0A4320500F2A27CA /* Resources */,
+				16A0A774DFC5BF333A11CA92 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -78,6 +126,7 @@
 			);
 			name = HelloWorldApp;
 			packageProductDependencies = (
+				3FF5E431C0D454FB679C9838 /* TCBleComminucation */,
 			);
 			productName = HelloWorldApp;
 			productReference = 2C3722B1F864A52E959CA8E4 /* HelloWorldApp.app */;
@@ -107,6 +156,9 @@
 			);
 			mainGroup = 4903DFE82568EBAAE0085088;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F353BDD2444C1647FEF6B3CE /* XCLocalSwiftPackageReference "Vendor/TCBleComminucation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 009ABA45E36D902AE882EA53 /* Products */;
 			projectDirPath = "";
@@ -133,6 +185,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF0F1B5F11DDE9E9EF4D0309 /* BLEFoundationView.swift in Sources */,
+				47359710831FC30A24C60201 /* BLEScanViewModel.swift in Sources */,
+				9BEE162431830C3F1EB0E920 /* BLEValidationModels.swift in Sources */,
 				A9F429548270D9618FC09C29 /* ContentView.swift in Sources */,
 				F4EB727ADD7840A9C01A0911 /* HelloWorldAppApp.swift in Sources */,
 			);
@@ -270,6 +325,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "BLE is required to discover and validate scooter features.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "BLE is required to connect and validate scooter features.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -295,6 +352,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "BLE is required to discover and validate scooter features.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "BLE is required to connect and validate scooter features.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -332,6 +391,20 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F353BDD2444C1647FEF6B3CE /* XCLocalSwiftPackageReference "Vendor/TCBleComminucation" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/TCBleComminucation;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3FF5E431C0D454FB679C9838 /* TCBleComminucation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TCBleComminucation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 81571C7C53D5B90F39E7123F /* Project object */;
 }
