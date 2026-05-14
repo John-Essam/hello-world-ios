@@ -18,7 +18,7 @@
 
 /* Begin PBXFileReference section */
 		001E136A33D0653E1B8179F2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		2C3722B1F864A52E959CA8E4 /* HelloWorldApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HelloWorldApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C3722B1F864A52E959CA8E4 /* HelloWorldApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HelloWorldApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4936786CB69E13B65A19F63B /* TCBleComminucation */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TCBleComminucation; path = Vendor/TCBleComminucation; sourceTree = SOURCE_ROOT; };
 		4A4A1DDCFAAB9F140071D3FD /* BLEScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEScanViewModel.swift; sourceTree = "<group>"; };
 		609AADBBB7EAAAACF92EBCB4 /* HelloWorldAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelloWorldAppApp.swift; sourceTree = "<group>"; };
@@ -142,7 +142,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					E11D51ABFDCEAF4BC6090480 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -323,7 +322,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = YZ8PS6SLA4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "BLE is required to discover and validate scooter features.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "BLE is required to connect and validate scooter features.";
@@ -350,7 +349,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = YZ8PS6SLA4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "BLE is required to discover and validate scooter features.";
 				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "BLE is required to connect and validate scooter features.";

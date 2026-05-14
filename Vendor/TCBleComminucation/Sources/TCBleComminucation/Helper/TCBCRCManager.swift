@@ -18,12 +18,12 @@ public class TCBCRCManager {
     }
     
     public static func check16(message: Data, crc16Value: UInt16) throws -> Bool {
-        let messageArray = message.bytes
+        let messageArray = Array(message)
         return try check16(message: messageArray, crc16Value: crc16Value)
     }
     
     public static func check32(message: Data, crc32Value: UInt32) throws -> Bool {
-        let messageArray = message.bytes
+        let messageArray = Array(message)
         return try check32(message: messageArray, crc32Value: crc32Value)
     }
     
@@ -33,7 +33,7 @@ public class TCBCRCManager {
     }
     
     public static func crc16Value(by message: Data) throws -> UInt16 {
-        let messageArray = message.bytes
+        let messageArray = Array(message)
         return try crc16Value(by: messageArray)
     }
     
@@ -42,7 +42,7 @@ public class TCBCRCManager {
     }
 
     public static func crc32Value(by message: Data) throws -> UInt32 {
-        let messageArray = message.bytes
+        let messageArray = Array(message)
         return try crc32Value(by: messageArray)
     }
     

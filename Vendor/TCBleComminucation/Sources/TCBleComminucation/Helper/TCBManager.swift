@@ -25,7 +25,7 @@ open class TCBManager {
             return TCBBLEModel()
         }
         
-        let dataBytes = data.bytes
+        let dataBytes = Array(data)
         // data length
         let dataLength = Int(dataBytes[Constants.frameDataLengthIndex])
         let dataEnd = dataLength + Constants.frameFrormatSize
@@ -49,7 +49,7 @@ open class TCBManager {
     /// - Parameter data: ble reponse data
     /// - Returns: true false
     public static func checkCRC16Data( _ data: Data) -> Bool {
-        let dataBytes = data.bytes
+        let dataBytes = Array(data)
         guard dataBytes.count > 2 else {
             return false
         }

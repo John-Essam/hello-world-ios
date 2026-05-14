@@ -12,9 +12,15 @@ let package = Package(
             targets: ["TCBleComminucation"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", exact: "1.8.0")
+    ],
     targets: [
         .target(
             name: "TCBleComminucation",
+            dependencies: [
+                .product(name: "CryptoSwift", package: "CryptoSwift")
+            ],
             path: "Sources/TCBleComminucation"
         )
     ]

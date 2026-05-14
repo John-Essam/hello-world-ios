@@ -17,6 +17,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastHeartbeat: HeartbeatSnapshot?
     @Published private(set) var connectionState: BLEConnectionState = .disconnected
     @Published private(set) var connectedDeviceID: UUID?
+    @Published private(set) var hasScanAttempted = false
+    @Published private(set) var lastScanError: String?
 
     private var centralManager: CBCentralManager!
     private var peripheralByID: [UUID: CBPeripheral] = [:]
@@ -54,17 +56,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     private func startScan() {
+        hasScanAttempted = true
         guard centralManager.state == .poweredOn else {
-            appendLog("SCAN failed: bluetoothState=\(centralManager.state.rawValue)")
+            let stateText = bluetoothStateLabel
+            lastScanError = "BLE state is \(stateText)"
+            appendLog("SCAN failed: bluetoothState=\(stateText)")
             scanStatus = .failed
             return
         }
 
+        lastScanError = nil
         devices.removeAll()
         let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         centralManager.scanForPeripherals(withServices: serviceUUIDs, options: options)
         isScanning = true
-        appendLog("SCAN start: services=\(serviceUUIDs.map(\\.uuidString).joined(separator: \",\"))")
+        appendLog("SCAN start: services=\(serviceUUIDs.map(\.uuidString).joined(separator: ","))")
     }
 
     private func stopScan() {
@@ -134,6 +140,46 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         if logs.count > 200 {
             logs.removeLast(logs.count - 200)
         }
+    }
+
+    var bluetoothStateLabel: String {
+        switch bluetoothState {
+        case .unknown: return "Unknown"
+        case .resetting: return "Resetting"
+        case .unsupported: return "Unsupported"
+        case .unauthorized: return "Unauthorized"
+        case .poweredOff: return "Powered Off"
+        case .poweredOn: return "Powered On"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    var scanStatusLabel: String {
+        if connectionState == .connected {
+            return "Connected"
+        }
+        if bluetoothState == .poweredOff {
+            return "Bluetooth OFF"
+        }
+        if bluetoothState == .unauthorized {
+            return "Permissions missing"
+        }
+        if bluetoothState == .unsupported {
+            return "Failed"
+        }
+        if scanStatus == .failed {
+            return "Failed"
+        }
+        if isScanning {
+            return devices.isEmpty ? "Scanning..." : "Devices found: \(devices.count)"
+        }
+        if hasScanAttempted && devices.isEmpty {
+            return "No devices found"
+        }
+        if !devices.isEmpty {
+            return "Devices found: \(devices.count)"
+        }
+        return "Ready to scan"
     }
 }
 
@@ -329,8 +375,5 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
 private extension Data {
     var hexString: String {
         map { String(format: "%02X", $0) }.joined()
-    }
-}
-        }
     }
 }

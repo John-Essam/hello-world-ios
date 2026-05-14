@@ -140,7 +140,7 @@ open class TCBECCMD {
             return
         }
         firmDataSize = size
-        fileCRC32 = (try? TCBCRC32.generate(file.bytes)) ?? 0
+        fileCRC32 = (try? TCBCRC32.generate(Array(file))) ?? 0
         progressStatus = 0
     }
     
@@ -172,7 +172,7 @@ open class TCBECCMD {
         waitingTime = kWatingSeconds
         waitTimer.resume()
         
-        let packetData = firmDatas[sendIndex].bytes
+        let packetData = Array(firmDatas[sendIndex])
         do {
             let statusData = try TCBE1Command.writeUpgradeDataPacket(type: firmwareType, index: sendIndex,
                                                                      data: packetData)
