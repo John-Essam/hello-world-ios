@@ -10,7 +10,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 |---|---|---|---|---|
 | BLE Scan | `CBCentralManager.scanForPeripherals(withServices:options:)` (broad scan `nil`, vendor UUIDs logged for diagnosis) | PARTIAL | IMPLEMENTATION_ISSUE | Initial implementation filtered by vendor service UUIDs and could hide valid peripherals if advertisements omit those UUIDs. Added callback/permission/filter diagnostics and broad official CoreBluetooth scan; live scooter retest pending. |
 | BLE Connect / Disconnect | `CBCentralManager.connect`, `CBCentralManager.cancelPeripheralConnection`, `CBPeripheral.discoverServices` | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
-| BLE Authentication (Bind) | `TCB02Command.writeConnect(on:userID:isReset:)` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
+| BLE Authentication (Bind) | `TCB02Command.writeConnect(on:userID:isReset:)` + `TCBManager.convertToModel` (`TCB02Model`) | PARTIAL | IMPLEMENTATION_ISSUE | iOS flow was briefly aligned to Android `5` value; vendor iOS demo uses `userID=0x272b`. Updated to official iOS demo bind input and added bind timeout/sequence diagnostics; physical retest pending. |
 | BLE Unbind | `TCB02Command.readUnbind()` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
 | BLE Lock / Unlock | `TCB02Command.writeLockStatus(status:)` + `TCBManager.convertToModel` (`TCB02Model`) | NOT_TESTED | - | UI + TX/RX logs implemented; live scooter physical reaction pending |
 | Heartbeat stream (`TCB01`) | notify callback + `TCBManager.convertToModel` (`TCB01Model`) | NOT_TESTED | - | UI + logs implemented; live scooter test pending |
@@ -25,6 +25,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Scan UI now prioritizes scooter prefixes (`cardoOX1`, `cardoOX2`, `cardoOX3`) to reduce wrong-device connection attempts.
 - Command TX is now gated on channel readiness (connected + vendor service discovered + write characteristic ready + notify enabled) to prevent premature bind/lock/unbind writes.
 - Real-device evidence showed `cardoOX3` can connect with services `180A` + `5443000B-...` instead of the earlier hard-coded reference UUIDs, so characteristic binding now uses official vendor write/notify UUIDs (`FFE1` / `FFE2`) across discovered services.
+- Bind investigation found Android-vs-iOS API parameter mismatch risk: Android uses `writeConnect(5)` while official iOS demo uses `writeConnect(on:..., userID: 0x272b)`. iOS bind now uses the documented iOS demo value and logs bind callback timing/response sequence to isolate SDK-vs-implementation behavior.
 
 ## Classification Rules
 

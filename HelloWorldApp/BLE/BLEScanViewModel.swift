@@ -43,6 +43,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingTcb02Action: TCB02Action?
     private var scanSessionID = UUID()
     private var connectAttemptID = UUID()
+    private var bindAttemptID = UUID()
+    private var bindStartedAt: Date?
+    private var bindResponseCount = 0
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -51,6 +54,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private let writeUUID = CBUUID(string: TCBConstant.uuidWrite)
     private let notifyUUID = CBUUID(string: TCBConstant.uuidNotify)
     private let scooterNamePrefixes = ["cardoOX1", "cardoOX2", "cardoOX3"]
+    // Official iOS demo path uses writeConnect(on:..., userID: 0x272b).
     private let validatorUserID: UInt32 = 0x272b
 
     private enum TCB02Action {
@@ -176,10 +180,15 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             return
         }
         do {
+            bindAttemptID = UUID()
+            bindStartedAt = Date()
+            bindResponseCount = 0
+            appendLog(.connect, "BIND sequence start: attempt=\(bindAttemptID.uuidString) notifyReady=\(notifyChannelReady) writeReady=\(writeChannelReady) vendorService=\(hasVendorServiceDiscovered)")
             let payload = try TCB02Command.writeConnect(on: true, userID: validatorUserID)
             pendingTcb02Action = .bind
             appendLog(.tx, "TX SDK TCB02Command.writeConnect(on:true,userID:\(validatorUserID)) bytes=\(payload.hexString)")
             send(payload)
+            scheduleBindDiagnostics(for: bindAttemptID)
         } catch {
             appendLog(.error, "BIND sdk error: \(error)")
             bindStatus = .failed
@@ -307,6 +316,24 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
                 appendLog(.error, "Connected callback fired but BLE channels are not fully ready yet")
                 connectStatus = .partial
             }
+        }
+    }
+
+    private func scheduleBindDiagnostics(for attemptID: UUID) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard attemptID == bindAttemptID else { return }
+            guard pendingTcb02Action == .bind else { return }
+            let elapsedMs = bindStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "BIND diagnostics timeout: no TCB02 bind response yet after \(elapsedMs)ms responsesSeen=\(bindResponseCount)"
+            )
+            appendLog(
+                .error,
+                "BIND pending state: connected=\(connectionState == .connected) notifyReady=\(notifyChannelReady) writeReady=\(writeChannelReady) vendorService=\(hasVendorServiceDiscovered)"
+            )
+            bindStatus = .partial
         }
     }
 
@@ -557,6 +584,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             notifyChannelReady = false
             isBound = false
             pendingTcb02Action = nil
+            bindStartedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -582,6 +610,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isBound = false
             hasVendorServiceDiscovered = false
             pendingTcb02Action = nil
+            bindStartedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -683,10 +712,17 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
             appendLog(.rx, "RX callback: char=\(characteristic.uuid.uuidString) bytes=\(data.hexString) error=\(String(describing: error))")
             let model = TCBManager.convertToModel(data: data)
             appendLog(.sdkParse, "SDK parsed model: \(type(of: model))")
+            if pendingTcb02Action == .bind {
+                bindResponseCount += 1
+                appendLog(.sdkParse, "BIND pending response #\(bindResponseCount): model=\(type(of: model))")
+            }
             if let bindModel = model as? TCB02Model {
+                let wasBindAction = pendingTcb02Action == .bind
                 isBound = bindModel.bluetoothStatus
                 lastKnownLockStatus = bindModel.lockStatus
                 if pendingTcb02Action == .bind {
+                    let latencyMs = bindStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "BIND callback: attempt=\(bindAttemptID.uuidString) latencyMs=\(latencyMs) bluetoothStatus=\(bindModel.bluetoothStatus) boundId=\(bindModel.boundId)")
                     if bindModel.bluetoothStatus {
                         bindStatus = .passed
                         appendLog(.sdkParse, "BIND result: PASSED (bluetoothStatus=true)")
@@ -720,6 +756,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                 }
                 pendingTcb02Action = nil
+                if wasBindAction {
+                    bindStartedAt = nil
+                }
                 appendLog(.sdkParse,
                     "SDK parsed TCB02Model: bluetoothStatus=\(bindModel.bluetoothStatus) lockStatus=\(bindModel.lockStatus) boundId=\(bindModel.boundId)"
                 )
@@ -740,6 +779,8 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 appendLog(.sdkParse,
                     "SDK parsed TCB01Model: power=\(heartbeatModel.power) speed=\(heartbeatModel.realTimeSpeed) batteryVoltageRaw=\(heartbeatModel.batteryVoltage) gear=\(heartbeatModel.gear) lock=\(heartbeatModel.lockStatus) cruise=\(heartbeatModel.cruiseStatus) controllerFault=\(heartbeatModel.controllerFault)"
                 )
+            } else if pendingTcb02Action == .bind {
+                appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")
             }
         }
     }
