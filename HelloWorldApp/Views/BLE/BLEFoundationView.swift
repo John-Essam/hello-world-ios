@@ -46,8 +46,24 @@ struct BLEFoundationView: View {
                         LabeledContent("BLE Connect", value: viewModel.connectStatus.rawValue)
                         LabeledContent("BLE Bind", value: viewModel.bindStatus.rawValue)
                         LabeledContent("BLE Unbind", value: viewModel.unbindStatus.rawValue)
+                        LabeledContent("BLE Lock", value: viewModel.lockStatus.rawValue)
+                        LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
                         LabeledContent("Heartbeat (TCB01)", value: viewModel.heartbeatStatus.rawValue)
                         LabeledContent("Connection", value: viewModel.connectionState.rawValue)
+                    }
+                    .padding(16)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Connection Validation Pipeline")
+                            .font(.headline)
+                        stageRow("Scanning", isComplete: viewModel.isScanning)
+                        stageRow("Device discovered", isComplete: !viewModel.devices.isEmpty)
+                        stageRow("Connecting", isComplete: viewModel.connectionState == .connecting)
+                        stageRow("Connected", isComplete: viewModel.hasConnectedCallback)
+                        stageRow("Notify enabled", isComplete: viewModel.isNotifying)
+                        stageRow("Bound", isComplete: viewModel.isBound)
+                        stageRow("Heartbeat receiving", isComplete: viewModel.heartbeatCount > 0)
                     }
                     .padding(16)
                     .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -88,6 +104,10 @@ struct BLEFoundationView: View {
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
                         Text("Scan callbacks: \(viewModel.scanCallbackCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 1)
+                        Text("Duplicate callbacks: \(viewModel.scanDuplicateCallbackCount)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 2)
@@ -239,6 +259,7 @@ struct BLEFoundationView: View {
                 LabeledContent("Runtime", value: viewModel.runtimeEnvironment)
                 LabeledContent("Scan Filter", value: viewModel.scanFilterLabel)
                 LabeledContent("Scan Callbacks", value: "\(viewModel.scanCallbackCount)")
+                LabeledContent("Duplicate Callbacks", value: "\(viewModel.scanDuplicateCallbackCount)")
             }
             .font(.subheadline)
 
@@ -285,6 +306,8 @@ struct BLEFoundationView: View {
             LabeledContent("Bind Status", value: viewModel.bindStatus.rawValue)
             LabeledContent("Notify Status", value: viewModel.notifyStatus.rawValue)
             LabeledContent("Notify Enabled", value: viewModel.isNotifying ? "YES" : "NO")
+            LabeledContent("Bound", value: viewModel.isBound ? "YES" : "NO")
+            LabeledContent("Lock State", value: viewModel.lockStateLabel)
             LabeledContent("Heartbeat Status", value: viewModel.heartbeatStatus.rawValue)
             LabeledContent("Heartbeat Frames", value: "\(viewModel.heartbeatCount)")
 
@@ -296,6 +319,19 @@ struct BLEFoundationView: View {
 
                 Button("Unbind (TCB02)") {
                     viewModel.unbindScooter()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Button("Lock") {
+                    viewModel.lockScooter()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+
+                Button("Unlock") {
+                    viewModel.unlockScooter()
                 }
                 .buttonStyle(.bordered)
 
@@ -322,6 +358,19 @@ struct BLEFoundationView: View {
             return .red
         }
         return .secondary
+    }
+
+    private func stageRow(_ label: String, isComplete: Bool) -> some View {
+        HStack {
+            Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isComplete ? Color.green : Color.secondary)
+            Text(label)
+                .font(.subheadline)
+            Spacer()
+            Text(isComplete ? "YES" : "NO")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isComplete ? Color.green : Color.secondary)
+        }
     }
 
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {
