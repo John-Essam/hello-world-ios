@@ -30,6 +30,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryBatteryPercentageStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryBatteryVoltageStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryRealTimeSpeedStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryFaultFlagsStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -55,6 +56,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var batteryPercent: Int?
     @Published private(set) var batteryVoltageRaw: Int?
     @Published private(set) var realTimeSpeed: Int?
+    @Published private(set) var activeFaultFlags: [String] = []
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -1273,6 +1275,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryPercentageStatus = .notTested
             telemetryBatteryVoltageStatus = .notTested
             telemetryRealTimeSpeedStatus = .notTested
+            telemetryFaultFlagsStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1291,6 +1294,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             batteryPercent = nil
             batteryVoltageRaw = nil
             realTimeSpeed = nil
+            activeFaultFlags = []
             pendingSdkAuditsByFunction.removeAll()
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
@@ -1353,6 +1357,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             batteryVoltageRaw = nil
             telemetryRealTimeSpeedStatus = .notTested
             realTimeSpeed = nil
+            telemetryFaultFlagsStatus = .notTested
+            activeFaultFlags = []
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1414,6 +1420,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             batteryVoltageRaw = nil
             telemetryRealTimeSpeedStatus = .notTested
             realTimeSpeed = nil
+            telemetryFaultFlagsStatus = .notTested
+            activeFaultFlags = []
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1622,6 +1630,8 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 telemetryBatteryPercentageStatus = .passed
                 telemetryBatteryVoltageStatus = .passed
                 telemetryRealTimeSpeedStatus = .passed
+                activeFaultFlags = decodeFaultFlags(from: heartbeatModel)
+                telemetryFaultFlagsStatus = .passed
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -1976,6 +1986,22 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         if device.hasVendorServiceMatch { return 2 }
         if device.isConnectable == true { return 1 }
         return 0
+    }
+
+    private func decodeFaultFlags(from model: TCB01Model) -> [String] {
+        var faults: [String] = []
+        if model.gyroscopeFault { faults.append("Gyroscope Fault") }
+        if model.batteryFault { faults.append("Battery Fault") }
+        if model.controllerFault { faults.append("Controller Fault") }
+        if model.MOSFault { faults.append("MOS Fault") }
+        if model.motorHallFault { faults.append("Motor Hall Fault") }
+        if model.brakeFault { faults.append("Brake Fault") }
+        if model.turnHandleFault { faults.append("Throttle Fault") }
+        if model.communicationFault { faults.append("Communication Fault") }
+        if model.batteryOvervoltage { faults.append("Battery Overvoltage") }
+        if model.batteryTemperatureHigh { faults.append("Battery Temperature High") }
+        if model.controllerTemperatureProtection { faults.append("Controller Temperature Protection") }
+        return faults
     }
 }
 

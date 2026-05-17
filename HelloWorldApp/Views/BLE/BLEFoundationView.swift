@@ -299,6 +299,7 @@ private struct BLEScooterControlView: View {
                         telemetryBatteryCard
                         telemetryVoltageCard
                         telemetrySpeedCard
+                        telemetryFaultFlagsCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -611,6 +612,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Battery Percentage", value: viewModel.telemetryBatteryPercentageStatus.rawValue)
             LabeledContent("Telemetry - Battery Voltage", value: viewModel.telemetryBatteryVoltageStatus.rawValue)
             LabeledContent("Telemetry - Real-Time Speed", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
+            LabeledContent("Telemetry - Fault Flags", value: viewModel.telemetryFaultFlagsStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -652,6 +654,38 @@ private struct BLEScooterControlView: View {
 
             LabeledContent("Validation", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
             Text("Source: TCB01 heartbeat stream (`TCB01Model.realtimeSpeed`)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryFaultFlagsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Fault Flags")
+                .font(.headline)
+
+            if viewModel.activeFaultFlags.isEmpty {
+                Text("No faults")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                    ForEach(viewModel.activeFaultFlags, id: \.self) { fault in
+                        Text(fault)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+
+            LabeledContent("Validation", value: viewModel.telemetryFaultFlagsStatus.rawValue)
+            Text("Source: TCB01 heartbeat fault bitfields")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
