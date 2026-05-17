@@ -259,6 +259,7 @@ private struct BLEScooterControlView: View {
     @ObservedObject var viewModel: BLEFoundationViewModel
     @State private var selectedSection: Section = .foundation
     @State private var selectedGear = 0
+    @State private var selectedZeroStartMode = true
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
@@ -410,6 +411,18 @@ private struct BLEScooterControlView: View {
             }
             .padding(.bottom, 8)
 
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Start Mode Validation", value: viewModel.startModeStatus.rawValue)
+                LabeledContent("Current Start Mode", value: startModeLabel(viewModel.isZeroStartModeEnabled))
+                Picker("Start Mode", selection: startModeBinding) {
+                    Text("Zero Start").tag(true)
+                    Text("Kick Start").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -436,6 +449,11 @@ private struct BLEScooterControlView: View {
                 selectedGear = newGear
             }
         }
+        .onChange(of: viewModel.isZeroStartModeEnabled) { _, newMode in
+            if let newMode {
+                selectedZeroStartMode = newMode
+            }
+        }
     }
 
     private var validationStatusCard: some View {
@@ -449,6 +467,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Lock", value: viewModel.lockStatus.rawValue)
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
+            LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)
@@ -539,6 +558,23 @@ private struct BLEScooterControlView: View {
         case 3: return "Gear3"
         default: return "Gear\(gear)"
         }
+    }
+
+    private var startModeBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.isZeroStartModeEnabled ?? selectedZeroStartMode
+            },
+            set: { newValue in
+                selectedZeroStartMode = newValue
+                viewModel.setStartMode(zeroStart: newValue)
+            }
+        )
+    }
+
+    private func startModeLabel(_ isZeroStart: Bool?) -> String {
+        guard let isZeroStart else { return "Unknown" }
+        return isZeroStart ? "Zero Start" : "Kick Start"
     }
 
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {

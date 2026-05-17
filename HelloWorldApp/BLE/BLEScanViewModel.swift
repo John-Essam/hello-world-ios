@@ -16,6 +16,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var unlockStatus: ValidationStatus = .notTested
     @Published private(set) var cruiseControlStatus: ValidationStatus = .notTested
     @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
+    @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -27,6 +28,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastKnownLockStatus: Bool?
     @Published private(set) var lastKnownCruiseControlEnabled: Bool?
     @Published private(set) var currentGearSelection: Int?
+    @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -55,6 +57,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingCruiseExpectedEnabled: Bool?
     private var gearCommandStartedAt: Date?
     private var pendingGearExpected: Int?
+    private var startModeCommandStartedAt: Date?
+    private var pendingZeroStartExpected: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -330,6 +334,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setStartMode(zeroStart: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "START MODE blocked: command channel not ready")
+            startModeStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "START MODE failed: write characteristic not ready")
+            startModeStatus = .failed
+            return
+        }
+        do {
+            startModeCommandStartedAt = Date()
+            pendingZeroStartExpected = zeroStart
+            let payload = try TCB02Command.writeStartMode(zeroStart: zeroStart)
+            appendLog(.tx, "TX SDK TCB02Command.writeStartMode(zeroStart:\(zeroStart)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleStartModeDiagnostics(expectedZeroStart: zeroStart)
+        } catch {
+            appendLog(.error, "START MODE sdk error: \(error)")
+            startModeStatus = .failed
+            pendingZeroStartExpected = nil
+            startModeCommandStartedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -431,6 +461,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             gearSelectionStatus = .partial
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+        }
+    }
+
+    private func scheduleStartModeDiagnostics(expectedZeroStart: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingZeroStartExpected == expectedZeroStart else { return }
+            let elapsedMs = startModeCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "START MODE diagnostics timeout: no matching heartbeat confirmation after \(elapsedMs)ms expectedZeroStart=\(expectedZeroStart)"
+            )
+            startModeStatus = .partial
+            pendingZeroStartExpected = nil
+            startModeCommandStartedAt = nil
         }
     }
 
@@ -655,10 +700,12 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unlockStatus = .notTested
             cruiseControlStatus = .notTested
             gearSelectionStatus = .notTested
+            startModeStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
             currentGearSelection = nil
+            isZeroStartModeEnabled = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -690,6 +737,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             cruiseCommandStartedAt = nil
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+            pendingZeroStartExpected = nil
+            startModeCommandStartedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -720,6 +769,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             cruiseCommandStartedAt = nil
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+            pendingZeroStartExpected = nil
+            startModeCommandStartedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -889,6 +940,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 lastKnownLockStatus = heartbeatModel.lockStatus
                 lastKnownCruiseControlEnabled = heartbeatModel.cruiseControlFunction
                 currentGearSelection = heartbeatModel.gear
+                isZeroStartModeEnabled = !heartbeatModel.startMode
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -933,6 +985,20 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingGearExpected = nil
                     gearCommandStartedAt = nil
+                }
+                if let expectedZeroStart = pendingZeroStartExpected {
+                    let actualZeroStart = !heartbeatModel.startMode
+                    let latencyMs = startModeCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "START MODE heartbeat confirmation: latencyMs=\(latencyMs) expectedZeroStart=\(expectedZeroStart) actualZeroStart=\(actualZeroStart)")
+                    if expectedZeroStart == actualZeroStart {
+                        startModeStatus = .passed
+                        appendLog(.sdkParse, "START MODE result: PASSED")
+                    } else {
+                        startModeStatus = .partial
+                        appendLog(.error, "START MODE heartbeat mismatch expectedZeroStart=\(expectedZeroStart) actualZeroStart=\(actualZeroStart)")
+                    }
+                    pendingZeroStartExpected = nil
+                    startModeCommandStartedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear
