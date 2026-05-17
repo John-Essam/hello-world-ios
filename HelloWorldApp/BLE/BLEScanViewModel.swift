@@ -48,6 +48,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var mileageRidingTimeStatus: ValidationStatus = .failed
     @Published private(set) var diagnosticsSerialNumberStatus: ValidationStatus = .failed
     @Published private(set) var diagnosticsDetailedDeviceInfoStatus: ValidationStatus = .failed
+    @Published private(set) var diagnosticsMeterVersionStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -103,6 +104,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var remainingMileageKm: Float?
     @Published private(set) var singleTripMileageKm: Float?
     @Published private(set) var totalOdoMileageKm: Float?
+    @Published private(set) var meterManufacturerCode: String?
+    @Published private(set) var meterHardwareVersion: String?
+    @Published private(set) var meterSoftwareVersion: String?
+    @Published private(set) var meterID: String?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -177,6 +182,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isSingleTripMileagePending = false
     private var totalOdoMileageRequestedAt: Date?
     private var isTotalOdoMileagePending = false
+    private var meterVersionRequestedAt: Date?
+    private var isMeterVersionPending = false
     private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
 
     private let serviceUUIDs: [CBUUID] = [
@@ -1145,6 +1152,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readMeterVersion() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "METER VERSION blocked: command channel not ready")
+            diagnosticsMeterVersionStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "METER VERSION failed: write characteristic not ready")
+            diagnosticsMeterVersionStatus = .failed
+            return
+        }
+        do {
+            meterVersionRequestedAt = Date()
+            isMeterVersionPending = true
+            let payload = try TCB11Command.readMeterVersion()
+            appendLog(.tx, "TX SDK TCB11Command.readMeterVersion() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB11Command.readMeterVersion()",
+                featureName: "Diagnostics / Meter Version",
+                expectedModel: "TCB11MeterModel"
+            )
+            scheduleMeterVersionDiagnostics()
+        } catch {
+            appendLog(.error, "METER VERSION sdk error: \(error)")
+            diagnosticsMeterVersionStatus = .failed
+            isMeterVersionPending = false
+            meterVersionRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1519,6 +1557,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleMeterVersionDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isMeterVersionPending else { return }
+            let elapsedMs = meterVersionRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "METER VERSION diagnostics timeout: no TCB11 meter response after \(elapsedMs)ms")
+            diagnosticsMeterVersionStatus = .partial
+            isMeterVersionPending = false
+            meterVersionRequestedAt = nil
+        }
+    }
+
     private func scheduleGlobalMaxSpeedReadDiagnostics() {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))
@@ -1784,6 +1834,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageRidingTimeStatus = .failed
             diagnosticsSerialNumberStatus = .failed
             diagnosticsDetailedDeviceInfoStatus = .failed
+            diagnosticsMeterVersionStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1832,6 +1883,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             remainingMileageKm = nil
             singleTripMileageKm = nil
             totalOdoMileageKm = nil
+            meterManufacturerCode = nil
+            meterHardwareVersion = nil
+            meterSoftwareVersion = nil
+            meterID = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
@@ -1842,6 +1897,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             singleTripMileageRequestedAt = nil
             isTotalOdoMileagePending = false
             totalOdoMileageRequestedAt = nil
+            isMeterVersionPending = false
+            meterVersionRequestedAt = nil
             pendingGearMaxSpeedReadExpectedGear = nil
             gearMaxSpeedReadRequestedAt = nil
             pendingGearMaxSpeedWriteExpectedGear = nil
@@ -1960,6 +2017,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageRidingTimeStatus = .notTested
             diagnosticsSerialNumberStatus = .notTested
             diagnosticsDetailedDeviceInfoStatus = .notTested
+            diagnosticsMeterVersionStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -1976,6 +2034,12 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             remainingMileageKm = nil
             singleTripMileageKm = nil
             totalOdoMileageKm = nil
+            meterManufacturerCode = nil
+            meterHardwareVersion = nil
+            meterSoftwareVersion = nil
+            meterID = nil
+            isMeterVersionPending = false
+            meterVersionRequestedAt = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -2085,6 +2149,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageRidingTimeStatus = .notTested
             diagnosticsSerialNumberStatus = .notTested
             diagnosticsDetailedDeviceInfoStatus = .notTested
+            diagnosticsMeterVersionStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -2101,6 +2166,12 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             remainingMileageKm = nil
             singleTripMileageKm = nil
             totalOdoMileageKm = nil
+            meterManufacturerCode = nil
+            meterHardwareVersion = nil
+            meterSoftwareVersion = nil
+            meterID = nil
+            isMeterVersionPending = false
+            meterVersionRequestedAt = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -2454,6 +2525,26 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.sdkParse, "TOTAL ODO result: PASSED")
                     isTotalOdoMileagePending = false
                     totalOdoMileageRequestedAt = nil
+                }
+            } else if let meterModel = model as? TCB11MeterModel {
+                meterManufacturerCode = meterModel.manufacturerCode
+                meterHardwareVersion = meterModel.hardwareVersion
+                meterSoftwareVersion = meterModel.binVersion
+                meterID = meterModel.meterID
+                appendLog(
+                    .sdkParse,
+                    "SDK parsed TCB11MeterModel: manufacturer=\(meterModel.manufacturerCode) hardware=\(meterModel.hardwareVersion) software=\(meterModel.binVersion) meterID=\(meterModel.meterID)"
+                )
+                if isMeterVersionPending {
+                    let latencyMs = meterVersionRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(
+                        .sdkParse,
+                        "METER VERSION callback: latencyMs=\(latencyMs) manufacturer=\(meterModel.manufacturerCode) hardware=\(meterModel.hardwareVersion) software=\(meterModel.binVersion) meterID=\(meterModel.meterID)"
+                    )
+                    diagnosticsMeterVersionStatus = .passed
+                    appendLog(.sdkParse, "METER VERSION result: PASSED")
+                    isMeterVersionPending = false
+                    meterVersionRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear

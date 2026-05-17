@@ -767,6 +767,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Mileage & Trip - Riding Time", value: viewModel.mileageRidingTimeStatus.rawValue)
             LabeledContent("Diagnostics - Serial Number", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
             LabeledContent("Diagnostics - Detailed Device Info", value: viewModel.diagnosticsDetailedDeviceInfoStatus.rawValue)
+            LabeledContent("Diagnostics - Meter Version", value: viewModel.diagnosticsMeterVersionStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -802,6 +803,26 @@ private struct BLEScooterControlView: View {
                     .foregroundStyle(.secondary)
                 Text("Placeholder only: manual frame path is intentionally not used.")
                     .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Meter Version (0x0011)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.diagnosticsMeterVersionStatus.rawValue)
+                LabeledContent("Manufacturer", value: viewModel.meterManufacturerCode ?? "--")
+                LabeledContent("Hardware", value: viewModel.meterHardwareVersion ?? "--")
+                LabeledContent("Software", value: viewModel.meterSoftwareVersion ?? "--")
+                LabeledContent("Meter ID", value: viewModel.meterID ?? "--")
+                Button("Read Meter Version") {
+                    viewModel.readMeterVersion()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+                Text("Official SDK API: `TCB11Command.readMeterVersion()`")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .padding(12)
