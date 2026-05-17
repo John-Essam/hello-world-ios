@@ -50,6 +50,13 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var diagnosticsDetailedDeviceInfoStatus: ValidationStatus = .failed
     @Published private(set) var diagnosticsMeterVersionStatus: ValidationStatus = .notTested
     @Published private(set) var diagnosticsControllerVersionStatus: ValidationStatus = .notTested
+    @Published private(set) var deviceConfigFactoryResetStatus: ValidationStatus = .failed
+    @Published private(set) var deviceConfigAutoPowerOffStatus: ValidationStatus = .failed
+    @Published private(set) var deviceConfigSecurityStatus: ValidationStatus = .failed
+    @Published private(set) var otaControllerStatus: ValidationStatus = .notTested
+    @Published private(set) var otaMeterStatus: ValidationStatus = .notTested
+    @Published private(set) var otaBootloaderFlashStatus: ValidationStatus = .failed
+    @Published private(set) var batteryTotalCapacityStatus: ValidationStatus = .failed
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -112,6 +119,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var controllerManufacturerCode: String?
     @Published private(set) var controllerHardwareVersion: String?
     @Published private(set) var controllerSoftwareVersion: String?
+    @Published private(set) var controllerOtaFilename = "No firmware file selected."
+    @Published private(set) var meterOtaFilename = "No firmware file selected."
+    @Published private(set) var controllerOtaProgress = 0
+    @Published private(set) var meterOtaProgress = 0
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -191,6 +202,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var controllerVersionRequestedAt: Date?
     private var isControllerVersionPending = false
     private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
+    private var controllerOtaFileData: Data?
+    private var meterOtaFileData: Data?
+    private var controllerOtaHelper: TCBECCMD?
+    private var meterOtaHelper: TCBECCMD?
+    private var activeOtaTarget: OtaTarget?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -217,6 +233,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         let functionCode: UInt8
         let expectedModel: String
         let startedAt: Date
+    }
+
+    enum OtaTarget {
+        case controller
+        case meter
     }
 
     override init() {
@@ -1220,6 +1241,147 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func appendExternalLog(message: String) {
+        appendLog(.error, message)
+    }
+
+    func requestFactoryReset() {
+        deviceConfigFactoryResetStatus = .failed
+        appendLog(.error, "SDK_GAP: Factory reset has no official iOS SDK command helper (`TCB03Command.restoreFactory()` not exposed in current SDK source)")
+    }
+
+    func reportAutoPowerOffGap() {
+        deviceConfigAutoPowerOffStatus = .failed
+        appendLog(.error, "SDK_GAP: Auto power-off (cmd06) has no official iOS command helper/model parser exposed")
+    }
+
+    func reportSecurityUtilitiesGap() {
+        deviceConfigSecurityStatus = .failed
+        appendLog(.error, "SDK_GAP: Password/security utilities (A0-AA) have no official iOS command helper/model parser exposed")
+    }
+
+    func loadOtaFile(url: URL, target: OtaTarget) {
+        do {
+            let data = try Data(contentsOf: url)
+            let name = url.lastPathComponent
+            switch target {
+            case .controller:
+                controllerOtaFileData = data
+                controllerOtaFilename = "\(name) (\(data.count) bytes)"
+                appendLog(.connect, "OTA controller file selected: name=\(name) bytes=\(data.count)")
+            case .meter:
+                meterOtaFileData = data
+                meterOtaFilename = "\(name) (\(data.count) bytes)"
+                appendLog(.connect, "OTA meter file selected: name=\(name) bytes=\(data.count)")
+            }
+        } catch {
+            appendLog(.error, "OTA file load failed target=\(target) error=\(error.localizedDescription)")
+        }
+    }
+
+    func startControllerOta() {
+        startOta(target: .controller)
+    }
+
+    func startMeterOta() {
+        startOta(target: .meter)
+    }
+
+    private func startOta(target: OtaTarget) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "OTA blocked: command channel not ready")
+            switch target {
+            case .controller: otaControllerStatus = .failed
+            case .meter: otaMeterStatus = .failed
+            }
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "OTA blocked: write characteristic not ready")
+            switch target {
+            case .controller: otaControllerStatus = .failed
+            case .meter: otaMeterStatus = .failed
+            }
+            return
+        }
+
+        let data: Data?
+        let fileLabel: String
+        let deviceType: TCBDeviceType
+        switch target {
+        case .controller:
+            data = controllerOtaFileData
+            fileLabel = controllerOtaFilename
+            deviceType = .control
+            otaControllerStatus = .partial
+            controllerOtaProgress = 0
+        case .meter:
+            data = meterOtaFileData
+            fileLabel = meterOtaFilename
+            deviceType = .meter
+            otaMeterStatus = .partial
+            meterOtaProgress = 0
+        }
+
+        guard let firmware = data else {
+            appendLog(.error, "OTA blocked: no file selected for target=\(target)")
+            switch target {
+            case .controller: otaControllerStatus = .failed
+            case .meter: otaMeterStatus = .failed
+            }
+            return
+        }
+        appendLog(.connect, "OTA start target=\(target) file=\(fileLabel) bytes=\(firmware.count)")
+
+        let helper = TCBECCMD(file: firmware, type: deviceType)
+        switch target {
+        case .controller: controllerOtaHelper = helper
+        case .meter: meterOtaHelper = helper
+        }
+        activeOtaTarget = target
+
+        helper.startOTA(
+            progress: { [weak self] progress in
+                guard let self else { return }
+                Task { @MainActor in
+                    switch target {
+                    case .controller:
+                        self.controllerOtaProgress = progress
+                        if progress >= 100 {
+                            self.otaControllerStatus = .passed
+                            self.activeOtaTarget = nil
+                        }
+                    case .meter:
+                        self.meterOtaProgress = progress
+                        if progress >= 100 {
+                            self.otaMeterStatus = .passed
+                            self.activeOtaTarget = nil
+                        }
+                    }
+                    self.appendLog(.sdkParse, "OTA progress target=\(target) progress=\(progress)%")
+                }
+            },
+            bleSneder: { [weak self] packet in
+                guard let self else { return }
+                Task { @MainActor in
+                    self.appendLog(.tx, "OTA TX target=\(target) bytes=\(packet.hexString)")
+                    self.send(packet)
+                }
+            },
+            error: { [weak self] error in
+                guard let self else { return }
+                Task { @MainActor in
+                    self.appendLog(.error, "OTA error target=\(target) error=\(error.localizedDescription)")
+                    switch target {
+                    case .controller: self.otaControllerStatus = .failed
+                    case .meter: self.otaMeterStatus = .failed
+                    }
+                    self.activeOtaTarget = nil
+                }
+            }
+        )
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1885,6 +2047,13 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             diagnosticsDetailedDeviceInfoStatus = .failed
             diagnosticsMeterVersionStatus = .notTested
             diagnosticsControllerVersionStatus = .notTested
+            deviceConfigFactoryResetStatus = .failed
+            deviceConfigAutoPowerOffStatus = .failed
+            deviceConfigSecurityStatus = .failed
+            otaControllerStatus = .notTested
+            otaMeterStatus = .notTested
+            otaBootloaderFlashStatus = .failed
+            batteryTotalCapacityStatus = .failed
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1940,6 +2109,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             controllerManufacturerCode = nil
             controllerHardwareVersion = nil
             controllerSoftwareVersion = nil
+            controllerOtaProgress = 0
+            meterOtaProgress = 0
+            activeOtaTarget = nil
+            controllerOtaHelper = nil
+            meterOtaHelper = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
@@ -1974,6 +2148,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             appendLog(.error, "SDK_GAP: Speed stats avg/max has no official iOS command helper/model parser (cmd32 not exposed in SDK commands)")
             appendLog(.error, "SDK_GAP: Serial number has no official iOS SDK helper/model parser (cmd1D is not exposed via command APIs)")
             appendLog(.error, "SDK_GAP: Detailed device info has no official iOS SDK helper/model parser (cmd1E is not exposed via command APIs)")
+            appendLog(.error, "SDK_GAP: Factory reset has no official iOS command helper (`TCB03Command.restoreFactory()` not exposed)")
+            appendLog(.error, "SDK_GAP: Auto power-off (cmd06) has no official iOS command helper/model parser")
+            appendLog(.error, "SDK_GAP: Password/security utilities (A0-AA) have no official iOS command helper/model parser")
+            appendLog(.error, "SDK_GAP: Battery total capacity (cmd0D) has no official iOS command helper/model parser")
+            appendLog(.error, "SDK_GAP: Bootloader/flash OTA (D0-D2/F0-F2) has no official iOS high-level validation wrapper in this app")
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -2074,10 +2253,22 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             diagnosticsDetailedDeviceInfoStatus = .notTested
             diagnosticsMeterVersionStatus = .notTested
             diagnosticsControllerVersionStatus = .notTested
+            deviceConfigFactoryResetStatus = .failed
+            deviceConfigAutoPowerOffStatus = .failed
+            deviceConfigSecurityStatus = .failed
+            otaControllerStatus = .notTested
+            otaMeterStatus = .notTested
+            otaBootloaderFlashStatus = .failed
+            batteryTotalCapacityStatus = .failed
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
             globalMaxSpeedReadStatus = .notTested
+            controllerOtaProgress = 0
+            meterOtaProgress = 0
+            activeOtaTarget = nil
+            controllerOtaHelper = nil
+            meterOtaHelper = nil
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -2876,6 +3067,39 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingNfcWriteExpected = nil
                     nfcWriteRequestedAt = nil
+                }
+            } else if let otaReadyModel = model as? TCBE0Model {
+                appendLog(.sdkParse, "SDK parsed TCBE0Model: readyToUpgrade=\(otaReadyModel.readyToUpgrade)")
+                appendLog(.rx, "OTA RX model=TCBE0Model ready=\(otaReadyModel.readyToUpgrade)")
+                switch activeOtaTarget {
+                case .controller:
+                    controllerOtaHelper?.sendNextPacketWith(reponse: otaReadyModel)
+                case .meter:
+                    meterOtaHelper?.sendNextPacketWith(reponse: otaReadyModel)
+                case .none:
+                    appendLog(.error, "OTA RX received TCBE0Model but no active OTA target")
+                }
+            } else if let otaPacketModel = model as? TCBE1Model {
+                appendLog(.sdkParse, "SDK parsed TCBE1Model: dataReceivingStatus=\(otaPacketModel.dataReceivingStatus)")
+                appendLog(.rx, "OTA RX model=TCBE1Model receivingStatus=\(otaPacketModel.dataReceivingStatus)")
+                switch activeOtaTarget {
+                case .controller:
+                    controllerOtaHelper?.sendNextPacketWith(reponse: otaPacketModel)
+                case .meter:
+                    meterOtaHelper?.sendNextPacketWith(reponse: otaPacketModel)
+                case .none:
+                    appendLog(.error, "OTA RX received TCBE1Model but no active OTA target")
+                }
+            } else if let otaResultModel = model as? TCBE2Model {
+                appendLog(.sdkParse, "SDK parsed TCBE2Model: completionResponse=\(otaResultModel.upgradeCompletionResponse)")
+                appendLog(.rx, "OTA RX model=TCBE2Model completion=\(otaResultModel.upgradeCompletionResponse)")
+                switch activeOtaTarget {
+                case .controller:
+                    controllerOtaHelper?.sendNextPacketWith(reponse: otaResultModel)
+                case .meter:
+                    meterOtaHelper?.sendNextPacketWith(reponse: otaResultModel)
+                case .none:
+                    appendLog(.error, "OTA RX received TCBE2Model but no active OTA target")
                 }
             } else if pendingTcb02Action == .bind {
                 appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")

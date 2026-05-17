@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct BLEFoundationView: View {
     @StateObject private var viewModel = BLEFoundationViewModel()
@@ -270,12 +271,17 @@ private struct BLEScooterControlView: View {
     @State private var brakeResponseDraft: Double = 5
     @State private var ambientModeDraft = 1
     @State private var ambientColorDraft: Color = .cyan
+    @State private var showingControllerOtaImporter = false
+    @State private var showingMeterOtaImporter = false
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
         case telemetry = "Telemetry"
         case mileageTrip = "Mileage & Trip"
         case diagnostics = "Diagnostics"
+        case deviceConfig = "Device Config"
+        case ota = "OTA"
+        case battery = "Battery"
         case coreControls = "Core Controls"
         case lights = "Lights"
         case logs = "Logs"
@@ -316,6 +322,12 @@ private struct BLEScooterControlView: View {
                         mileageTripCard
                     case .diagnostics:
                         diagnosticsCard
+                    case .deviceConfig:
+                        deviceConfigCard
+                    case .ota:
+                        otaCard
+                    case .battery:
+                        batteryCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -769,6 +781,13 @@ private struct BLEScooterControlView: View {
             LabeledContent("Diagnostics - Detailed Device Info", value: viewModel.diagnosticsDetailedDeviceInfoStatus.rawValue)
             LabeledContent("Diagnostics - Meter Version", value: viewModel.diagnosticsMeterVersionStatus.rawValue)
             LabeledContent("Diagnostics - Controller Version", value: viewModel.diagnosticsControllerVersionStatus.rawValue)
+            LabeledContent("Device Config - Factory Reset", value: viewModel.deviceConfigFactoryResetStatus.rawValue)
+            LabeledContent("Device Config - Auto Power-Off", value: viewModel.deviceConfigAutoPowerOffStatus.rawValue)
+            LabeledContent("Device Config - Security Utilities", value: viewModel.deviceConfigSecurityStatus.rawValue)
+            LabeledContent("OTA - Controller", value: viewModel.otaControllerStatus.rawValue)
+            LabeledContent("OTA - Meter", value: viewModel.otaMeterStatus.rawValue)
+            LabeledContent("OTA - Bootloader/Flash", value: viewModel.otaBootloaderFlashStatus.rawValue)
+            LabeledContent("Battery - Total Capacity", value: viewModel.batteryTotalCapacityStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -842,6 +861,179 @@ private struct BLEScooterControlView: View {
                 .buttonStyle(.bordered)
                 .disabled(!viewModel.isCommandChannelReady)
                 Text("Official SDK API: `TCB11Command.readControllerVersion()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var deviceConfigCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Device Config")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Factory Reset")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.deviceConfigFactoryResetStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK helper `TCB03Command.restoreFactory()` is exposed in current SDK source.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Log Factory Reset SDK Gap") {
+                    viewModel.requestFactoryReset()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Auto Power-Off (0x0006)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.deviceConfigAutoPowerOffStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for cmd06.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Log Auto Power-Off SDK Gap") {
+                    viewModel.reportAutoPowerOffGap()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Password / Security Utilities (A0-AA)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.deviceConfigSecurityStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for password/security utility commands.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Log Security Utilities SDK Gap") {
+                    viewModel.reportSecurityUtilitiesGap()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var otaCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("OTA")
+                .font(.headline)
+
+            Text("Warning: OTA can brick a scooter if interrupted. Start only with verified firmware.")
+                .font(.caption)
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Controller OTA (TCBECCMD)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.otaControllerStatus.rawValue)
+                LabeledContent("File", value: viewModel.controllerOtaFilename)
+                LabeledContent("Progress", value: "\(viewModel.controllerOtaProgress)%")
+                HStack {
+                    Button("Pick File") {
+                        showingControllerOtaImporter = true
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Start Controller OTA") {
+                        viewModel.startControllerOta()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Meter OTA (TCBECCMD)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.otaMeterStatus.rawValue)
+                LabeledContent("File", value: viewModel.meterOtaFilename)
+                LabeledContent("Progress", value: "\(viewModel.meterOtaProgress)%")
+                HStack {
+                    Button("Pick File") {
+                        showingMeterOtaImporter = true
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Start Meter OTA") {
+                        viewModel.startMeterOta()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Bootloader / Flash OTA (D0-D2 / F0-F2)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.otaBootloaderFlashStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official high-level iOS SDK validation wrapper is exposed for this OTA path in current sources.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .fileImporter(
+            isPresented: $showingControllerOtaImporter,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case let .success(urls):
+                if let url = urls.first {
+                    viewModel.loadOtaFile(url: url, target: .controller)
+                }
+            case let .failure(error):
+                viewModel.appendExternalLog(message: "OTA file picker error (controller): \(error.localizedDescription)")
+            }
+        }
+        .fileImporter(
+            isPresented: $showingMeterOtaImporter,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case let .success(urls):
+                if let url = urls.first {
+                    viewModel.loadOtaFile(url: url, target: .meter)
+                }
+            case let .failure(error):
+                viewModel.appendExternalLog(message: "OTA file picker error (meter): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private var batteryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Battery Data")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Battery Total Capacity (0x000D)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.batteryTotalCapacityStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for cmd0D battery total capacity.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
