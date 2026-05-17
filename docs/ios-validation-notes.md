@@ -24,6 +24,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Unit System (KM/Mile) | `TCB02Command.writeMetricMileSystemTheme(isKM:)` + heartbeat confirmation from `TCB01Model.metricMileUnit` | NOT_TESTED | - | Segmented KM/Mile UI with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | Throttle Response Read | `TCB22Command.readResponseTime(type:)` with `type=0` | NOT_TESTED | - | Read button + value display with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
 | Brake Response Read | `TCB22Command.readResponseTime(type:)` with `type=1` | NOT_TESTED | - | Read button + value display with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
+| Throttle / Brake Response Write | `TCB22Command.writeResponseTime(type:time:)` with `type=0` / `type=1` | NOT_TESTED | - | Slider-based 0-10 write controls for throttle/brake with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
 
 ## Investigation Notes (2026-05-14)

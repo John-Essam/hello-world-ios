@@ -261,6 +261,8 @@ private struct BLEScooterControlView: View {
     @State private var selectedGear = 0
     @State private var selectedZeroStartMode = true
     @State private var selectedMetricUnit = true
+    @State private var throttleResponseDraft: Double = 5
+    @State private var brakeResponseDraft: Double = 5
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
@@ -458,6 +460,32 @@ private struct BLEScooterControlView: View {
             }
             .padding(.bottom, 8)
 
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Throttle Response Write", value: viewModel.throttleResponseWriteStatus.rawValue)
+                LabeledContent("Target Value", value: "\(Int(throttleResponseDraft.rounded()))")
+                Slider(value: $throttleResponseDraft, in: 0...10, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+                Button("Write Throttle Response") {
+                    viewModel.writeThrottleResponse(value: Int(throttleResponseDraft.rounded()))
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Brake Response Write", value: viewModel.brakeResponseWriteStatus.rawValue)
+                LabeledContent("Target Value", value: "\(Int(brakeResponseDraft.rounded()))")
+                Slider(value: $brakeResponseDraft, in: 0...10, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+                Button("Write Brake Response") {
+                    viewModel.writeBrakeResponse(value: Int(brakeResponseDraft.rounded()))
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -494,6 +522,16 @@ private struct BLEScooterControlView: View {
                 selectedMetricUnit = newUnit
             }
         }
+        .onChange(of: viewModel.throttleResponseValue) { _, newValue in
+            if let newValue {
+                throttleResponseDraft = Double(newValue)
+            }
+        }
+        .onChange(of: viewModel.brakeResponseValue) { _, newValue in
+            if let newValue {
+                brakeResponseDraft = Double(newValue)
+            }
+        }
     }
 
     private var validationStatusCard: some View {
@@ -511,6 +549,8 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)
             LabeledContent("Core Controls - Brake Read", value: viewModel.brakeResponseReadStatus.rawValue)
+            LabeledContent("Core Controls - Throttle Write", value: viewModel.throttleResponseWriteStatus.rawValue)
+            LabeledContent("Core Controls - Brake Write", value: viewModel.brakeResponseWriteStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)

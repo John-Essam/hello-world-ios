@@ -20,6 +20,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
     @Published private(set) var brakeResponseReadStatus: ValidationStatus = .notTested
+    @Published private(set) var throttleResponseWriteStatus: ValidationStatus = .notTested
+    @Published private(set) var brakeResponseWriteStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -71,6 +73,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isThrottleReadPending = false
     private var brakeReadRequestedAt: Date?
     private var isBrakeReadPending = false
+    private var throttleWriteRequestedAt: Date?
+    private var pendingThrottleWriteExpected: Int?
+    private var brakeWriteRequestedAt: Date?
+    private var pendingBrakeWriteExpected: Int?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -450,6 +456,68 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func writeThrottleResponse(value: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "THROTTLE WRITE blocked: command channel not ready")
+            throttleResponseWriteStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "THROTTLE WRITE failed: write characteristic not ready")
+            throttleResponseWriteStatus = .failed
+            return
+        }
+        guard (0...10).contains(value) else {
+            appendLog(.error, "THROTTLE WRITE rejected: value out of range \(value)")
+            throttleResponseWriteStatus = .failed
+            return
+        }
+        do {
+            throttleWriteRequestedAt = Date()
+            pendingThrottleWriteExpected = value
+            let payload = try TCB22Command.writeResponseTime(type: 0, time: value)
+            appendLog(.tx, "TX SDK TCB22Command.writeResponseTime(type:0,time:\(value)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleThrottleWriteDiagnostics(expectedValue: value)
+        } catch {
+            appendLog(.error, "THROTTLE WRITE sdk error: \(error)")
+            throttleResponseWriteStatus = .failed
+            pendingThrottleWriteExpected = nil
+            throttleWriteRequestedAt = nil
+        }
+    }
+
+    func writeBrakeResponse(value: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "BRAKE WRITE blocked: command channel not ready")
+            brakeResponseWriteStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "BRAKE WRITE failed: write characteristic not ready")
+            brakeResponseWriteStatus = .failed
+            return
+        }
+        guard (0...10).contains(value) else {
+            appendLog(.error, "BRAKE WRITE rejected: value out of range \(value)")
+            brakeResponseWriteStatus = .failed
+            return
+        }
+        do {
+            brakeWriteRequestedAt = Date()
+            pendingBrakeWriteExpected = value
+            let payload = try TCB22Command.writeResponseTime(type: 1, time: value)
+            appendLog(.tx, "TX SDK TCB22Command.writeResponseTime(type:1,time:\(value)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleBrakeWriteDiagnostics(expectedValue: value)
+        } catch {
+            appendLog(.error, "BRAKE WRITE sdk error: \(error)")
+            brakeResponseWriteStatus = .failed
+            pendingBrakeWriteExpected = nil
+            brakeWriteRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -605,6 +673,30 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             brakeResponseReadStatus = .partial
             isBrakeReadPending = false
             brakeReadRequestedAt = nil
+        }
+    }
+
+    private func scheduleThrottleWriteDiagnostics(expectedValue: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingThrottleWriteExpected == expectedValue else { return }
+            let elapsedMs = throttleWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "THROTTLE WRITE diagnostics timeout: no TCB22 throttle confirmation after \(elapsedMs)ms")
+            throttleResponseWriteStatus = .partial
+            pendingThrottleWriteExpected = nil
+            throttleWriteRequestedAt = nil
+        }
+    }
+
+    private func scheduleBrakeWriteDiagnostics(expectedValue: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingBrakeWriteExpected == expectedValue else { return }
+            let elapsedMs = brakeWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "BRAKE WRITE diagnostics timeout: no TCB22 brake confirmation after \(elapsedMs)ms")
+            brakeResponseWriteStatus = .partial
+            pendingBrakeWriteExpected = nil
+            brakeWriteRequestedAt = nil
         }
     }
 
@@ -833,6 +925,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unitSystemStatus = .notTested
             throttleResponseReadStatus = .notTested
             brakeResponseReadStatus = .notTested
+            throttleResponseWriteStatus = .notTested
+            brakeResponseWriteStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -880,6 +974,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             throttleReadRequestedAt = nil
             isBrakeReadPending = false
             brakeReadRequestedAt = nil
+            pendingThrottleWriteExpected = nil
+            throttleWriteRequestedAt = nil
+            pendingBrakeWriteExpected = nil
+            brakeWriteRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -918,6 +1016,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             throttleReadRequestedAt = nil
             isBrakeReadPending = false
             brakeReadRequestedAt = nil
+            pendingThrottleWriteExpected = nil
+            throttleWriteRequestedAt = nil
+            pendingBrakeWriteExpected = nil
+            brakeWriteRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1190,6 +1292,19 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         isThrottleReadPending = false
                         throttleReadRequestedAt = nil
                     }
+                    if let expected = pendingThrottleWriteExpected {
+                        let latencyMs = throttleWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                        appendLog(.sdkParse, "THROTTLE WRITE callback: latencyMs=\(latencyMs) expected=\(expected) actual=\(responseModel.response)")
+                        if expected == responseModel.response {
+                            throttleResponseWriteStatus = .passed
+                            appendLog(.sdkParse, "THROTTLE WRITE result: PASSED")
+                        } else {
+                            throttleResponseWriteStatus = .partial
+                            appendLog(.error, "THROTTLE WRITE mismatch expected=\(expected) actual=\(responseModel.response)")
+                        }
+                        pendingThrottleWriteExpected = nil
+                        throttleWriteRequestedAt = nil
+                    }
                 } else if responseModel.responseType == .brake {
                     brakeResponseValue = responseModel.response
                     if isBrakeReadPending {
@@ -1199,6 +1314,19 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         appendLog(.sdkParse, "BRAKE READ result: PASSED")
                         isBrakeReadPending = false
                         brakeReadRequestedAt = nil
+                    }
+                    if let expected = pendingBrakeWriteExpected {
+                        let latencyMs = brakeWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                        appendLog(.sdkParse, "BRAKE WRITE callback: latencyMs=\(latencyMs) expected=\(expected) actual=\(responseModel.response)")
+                        if expected == responseModel.response {
+                            brakeResponseWriteStatus = .passed
+                            appendLog(.sdkParse, "BRAKE WRITE result: PASSED")
+                        } else {
+                            brakeResponseWriteStatus = .partial
+                            appendLog(.error, "BRAKE WRITE mismatch expected=\(expected) actual=\(responseModel.response)")
+                        }
+                        pendingBrakeWriteExpected = nil
+                        brakeWriteRequestedAt = nil
                     }
                 }
             } else if pendingTcb02Action == .bind {
