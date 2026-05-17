@@ -298,6 +298,7 @@ private struct BLEScooterControlView: View {
                     case .telemetry:
                         telemetryBatteryCard
                         telemetryVoltageCard
+                        telemetrySpeedCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -609,6 +610,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Lights - Ambient RGB/Mode", value: viewModel.ambientLightStyleStatus.rawValue)
             LabeledContent("Telemetry - Battery Percentage", value: viewModel.telemetryBatteryPercentageStatus.rawValue)
             LabeledContent("Telemetry - Battery Voltage", value: viewModel.telemetryBatteryVoltageStatus.rawValue)
+            LabeledContent("Telemetry - Real-Time Speed", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -627,6 +629,31 @@ private struct BLEScooterControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetrySpeedCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Real-Time Speed")
+                .font(.headline)
+
+            let speedText = viewModel.realTimeSpeed.map(String.init) ?? "--"
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(speedText)
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .contentTransition(.numericText(value: Double(viewModel.realTimeSpeed ?? 0)))
+                Text("km/h")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            .animation(.easeInOut(duration: 0.2), value: viewModel.realTimeSpeed)
+
+            LabeledContent("Validation", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
+            Text("Source: TCB01 heartbeat stream (`TCB01Model.realtimeSpeed`)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
