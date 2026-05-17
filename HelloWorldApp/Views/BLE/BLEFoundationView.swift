@@ -1036,6 +1036,23 @@ private struct BLEScooterControlView: View {
             }
             .padding(12)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Total Mileage (ODO)", value: viewModel.totalOdoMileageKm.map { String(format: "%.1f km", $0) } ?? "--")
+                LabeledContent("Validation", value: viewModel.mileageTotalOdoStatus.rawValue)
+
+                Button("Read Total Mileage (ODO)") {
+                    viewModel.readTotalTripMileage()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                Text("Official SDK API: `TCB09Command.readTotalTripMileage()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

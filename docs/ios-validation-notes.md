@@ -62,6 +62,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 |---|---|---|---|---|
 | Remaining Mileage | `TCB30Command.readRemainingMileage()` + `TCB30Model.remainingMileage` | NOT_TESTED | - | Dedicated Mileage & Trip section added with TX/RX/SDK-parse/timing logs and timeout diagnostics; scooter-side validation pending. |
 | Single-Trip Mileage | `TCB08Command.readSingleTripMileage()` + `TCB08Model.singleTripMileage` | NOT_TESTED | - | UI now persists latest successful trip read and logs TX/RX/model conversion + callback timing for evidence collection. |
+| Total Mileage / ODO | `TCB09Command.readTotalTripMileage()` + `TCB09Model.totalMileage` | NOT_TESTED | - | ODO card + command flow implemented with TX/RX/SDK-parse/timing diagnostics using official iOS SDK only. |
 
 ## Investigation Notes (2026-05-14)
 

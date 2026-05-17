@@ -1112,6 +1112,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readTotalTripMileage() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "TOTAL ODO blocked: command channel not ready")
+            mileageTotalOdoStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "TOTAL ODO failed: write characteristic not ready")
+            mileageTotalOdoStatus = .failed
+            return
+        }
+        do {
+            totalOdoMileageRequestedAt = Date()
+            isTotalOdoMileagePending = true
+            let payload = try TCB09Command.readTotalTripMileage()
+            appendLog(.tx, "TX SDK TCB09Command.readTotalTripMileage() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB09Command.readTotalTripMileage()",
+                featureName: "Mileage & Trip / Total Mileage ODO",
+                expectedModel: "TCB09Model"
+            )
+            scheduleTotalOdoMileageDiagnostics()
+        } catch {
+            appendLog(.error, "TOTAL ODO sdk error: \(error)")
+            mileageTotalOdoStatus = .failed
+            isTotalOdoMileagePending = false
+            totalOdoMileageRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1127,6 +1158,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             ("TCB1ACommand.readAmbientLight", try? TCB1ACommand.readAmbientLight()),
             ("TCB1ACommand.writeAmbientLight(type:1,R:255,G:0,B:0)", try? TCB1ACommand.writeAmbientLight(type: 1, R: 255, G: 0, B: 0)),
             ("TCB08Command.readSingleTripMileage()", try? TCB08Command.readSingleTripMileage()),
+            ("TCB09Command.readTotalTripMileage()", try? TCB09Command.readTotalTripMileage()),
             ("TCB30Command.readRemainingMileage()", try? TCB30Command.readRemainingMileage())
         ]
         for entry in cases {
@@ -1470,6 +1502,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             mileageSingleTripStatus = .partial
             isSingleTripMileagePending = false
             singleTripMileageRequestedAt = nil
+        }
+    }
+
+    private func scheduleTotalOdoMileageDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isTotalOdoMileagePending else { return }
+            let elapsedMs = totalOdoMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "TOTAL ODO diagnostics timeout: no TCB09 response after \(elapsedMs)ms")
+            mileageTotalOdoStatus = .partial
+            isTotalOdoMileagePending = false
+            totalOdoMileageRequestedAt = nil
         }
     }
 
@@ -2389,6 +2433,17 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.sdkParse, "SINGLE TRIP result: PASSED")
                     isSingleTripMileagePending = false
                     singleTripMileageRequestedAt = nil
+                }
+            } else if let totalOdoModel = model as? TCB09Model {
+                totalOdoMileageKm = totalOdoModel.totalMileage
+                appendLog(.sdkParse, "SDK parsed TCB09Model: totalOdoMileageKm=\(totalOdoModel.totalMileage)")
+                if isTotalOdoMileagePending {
+                    let latencyMs = totalOdoMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "TOTAL ODO callback: latencyMs=\(latencyMs) valueKm=\(totalOdoModel.totalMileage)")
+                    mileageTotalOdoStatus = .passed
+                    appendLog(.sdkParse, "TOTAL ODO result: PASSED")
+                    isTotalOdoMileagePending = false
+                    totalOdoMileageRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear
