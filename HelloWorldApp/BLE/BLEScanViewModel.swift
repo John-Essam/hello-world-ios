@@ -18,6 +18,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
     @Published private(set) var gearMaxSpeedReadStatus: ValidationStatus = .notTested
     @Published private(set) var gearMaxSpeedWriteStatus: ValidationStatus = .notTested
+    @Published private(set) var customGearProfilesStatus: ValidationStatus = .notTested
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
@@ -57,6 +58,15 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastGearMaxSpeedWriteRequestedSpeed: Int?
     @Published private(set) var lastGearMaxSpeedWriteSdkSpeed: Int?
     @Published private(set) var lastGearMaxSpeedWriteReadbackSpeed: Int?
+    @Published private(set) var customProfileRequestedG1: Int?
+    @Published private(set) var customProfileRequestedG2: Int?
+    @Published private(set) var customProfileRequestedG3: Int?
+    @Published private(set) var customProfileSdkG1: Int?
+    @Published private(set) var customProfileSdkG2: Int?
+    @Published private(set) var customProfileSdkG3: Int?
+    @Published private(set) var customProfileReadbackG1: Int?
+    @Published private(set) var customProfileReadbackG2: Int?
+    @Published private(set) var customProfileReadbackG3: Int?
     @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var isMetricUnitEnabled: Bool?
     @Published private(set) var throttleResponseValue: Int?
@@ -114,6 +124,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var gearMaxSpeedWriteRequestedAt: Date?
     private var pendingGearMaxSpeedWriteExpectedGear: Int?
     private var pendingGearMaxSpeedWriteExpectedSpeed: Int?
+    private var customGearProfileAttemptID = UUID()
+    private var customGearProfileExpectedByGear: [Int: Int] = [:]
+    private var customGearProfileReadbackByGear: [Int: Int] = [:]
+    private var customGearProfileApplyTask: Task<Void, Never>?
+    private var isCustomGearProfileReadbackPhase = false
     private var startModeCommandStartedAt: Date?
     private var pendingZeroStartExpected: Bool?
     private var unitSystemCommandStartedAt: Date?
@@ -498,6 +513,68 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             pendingGearMaxSpeedWriteExpectedGear = nil
             pendingGearMaxSpeedWriteExpectedSpeed = nil
             gearMaxSpeedWriteRequestedAt = nil
+        }
+    }
+
+    func applyCustomGearProfile(g1: Int, g2: Int, g3: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "CUSTOM PROFILE blocked: command channel not ready")
+            customGearProfilesStatus = .failed
+            return
+        }
+        let requested = [1: g1, 2: g2, 3: g3]
+        guard requested.values.allSatisfy({ (0...50).contains($0) }) else {
+            appendLog(.error, "CUSTOM PROFILE rejected: values must be within 0...50")
+            customGearProfilesStatus = .failed
+            return
+        }
+
+        customGearProfileApplyTask?.cancel()
+        customGearProfileAttemptID = UUID()
+        customGearProfileExpectedByGear = requested
+        customGearProfileReadbackByGear = [:]
+        isCustomGearProfileReadbackPhase = false
+        customGearProfilesStatus = .pending
+        customProfileRequestedG1 = g1
+        customProfileRequestedG2 = g2
+        customProfileRequestedG3 = g3
+        customProfileSdkG1 = g1
+        customProfileSdkG2 = g2
+        customProfileSdkG3 = g3
+        customProfileReadbackG1 = nil
+        customProfileReadbackG2 = nil
+        customProfileReadbackG3 = nil
+
+        let attempt = customGearProfileAttemptID
+        appendLog(
+            .tx,
+            "CUSTOM PROFILE apply start: attempt=\(attempt.uuidString) requested=[g1:\(g1),g2:\(g2),g3:\(g3)] sdkValues=[g1:\(g1),g2:\(g2),g3:\(g3)] writeSpacingMs=1500 readbackDelayMs=4500"
+        )
+
+        customGearProfileApplyTask = Task { @MainActor in
+            let writePlan: [(gear: Int, speed: Int)] = [(1, g1), (2, g2), (3, g3)]
+            for (index, step) in writePlan.enumerated() {
+                guard !Task.isCancelled, attempt == customGearProfileAttemptID else { return }
+                writeGearMaxSpeed(gear: step.gear, speed: step.speed)
+                if index < writePlan.count - 1 {
+                    try? await Task.sleep(for: .milliseconds(1500))
+                }
+            }
+
+            guard !Task.isCancelled, attempt == customGearProfileAttemptID else { return }
+            try? await Task.sleep(for: .milliseconds(4500))
+            guard !Task.isCancelled, attempt == customGearProfileAttemptID else { return }
+
+            isCustomGearProfileReadbackPhase = true
+            appendLog(.sdkParse, "CUSTOM PROFILE readback phase start: attempt=\(attempt.uuidString)")
+            let readPlan = [1, 2, 3]
+            for (index, gear) in readPlan.enumerated() {
+                guard !Task.isCancelled, attempt == customGearProfileAttemptID else { return }
+                readGearMaxSpeed(gear: gear)
+                if index < readPlan.count - 1 {
+                    try? await Task.sleep(for: .milliseconds(1500))
+                }
+            }
         }
     }
 
@@ -1487,6 +1564,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearSelectionStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
+            customGearProfilesStatus = .notTested
             startModeStatus = .notTested
             unitSystemStatus = .notTested
             throttleResponseReadStatus = .notTested
@@ -1519,6 +1597,15 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             lastGearMaxSpeedWriteRequestedSpeed = nil
             lastGearMaxSpeedWriteSdkSpeed = nil
             lastGearMaxSpeedWriteReadbackSpeed = nil
+            customProfileRequestedG1 = nil
+            customProfileRequestedG2 = nil
+            customProfileRequestedG3 = nil
+            customProfileSdkG1 = nil
+            customProfileSdkG2 = nil
+            customProfileSdkG3 = nil
+            customProfileReadbackG1 = nil
+            customProfileReadbackG2 = nil
+            customProfileReadbackG3 = nil
             isZeroStartModeEnabled = nil
             isMetricUnitEnabled = nil
             throttleResponseValue = nil
@@ -1552,6 +1639,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             pendingGearMaxSpeedWriteExpectedGear = nil
             pendingGearMaxSpeedWriteExpectedSpeed = nil
             gearMaxSpeedWriteRequestedAt = nil
+            customGearProfileExpectedByGear = [:]
+            customGearProfileReadbackByGear = [:]
+            isCustomGearProfileReadbackPhase = false
+            customGearProfileApplyTask?.cancel()
+            customGearProfileApplyTask = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
@@ -1592,6 +1684,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             pendingGearMaxSpeedWriteExpectedGear = nil
             pendingGearMaxSpeedWriteExpectedSpeed = nil
             gearMaxSpeedWriteRequestedAt = nil
+            customGearProfileExpectedByGear = [:]
+            customGearProfileReadbackByGear = [:]
+            isCustomGearProfileReadbackPhase = false
+            customGearProfileApplyTask?.cancel()
+            customGearProfileApplyTask = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1636,6 +1733,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryVoltageDetailStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
+            customGearProfilesStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1652,6 +1750,15 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             lastGearMaxSpeedWriteRequestedSpeed = nil
             lastGearMaxSpeedWriteSdkSpeed = nil
             lastGearMaxSpeedWriteReadbackSpeed = nil
+            customProfileRequestedG1 = nil
+            customProfileRequestedG2 = nil
+            customProfileRequestedG3 = nil
+            customProfileSdkG1 = nil
+            customProfileSdkG2 = nil
+            customProfileSdkG3 = nil
+            customProfileReadbackG1 = nil
+            customProfileReadbackG2 = nil
+            customProfileReadbackG3 = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1688,6 +1795,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             pendingGearMaxSpeedWriteExpectedGear = nil
             pendingGearMaxSpeedWriteExpectedSpeed = nil
             gearMaxSpeedWriteRequestedAt = nil
+            customGearProfileExpectedByGear = [:]
+            customGearProfileReadbackByGear = [:]
+            isCustomGearProfileReadbackPhase = false
+            customGearProfileApplyTask?.cancel()
+            customGearProfileApplyTask = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1732,6 +1844,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryVoltageDetailStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
+            customGearProfilesStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1748,6 +1861,15 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             lastGearMaxSpeedWriteRequestedSpeed = nil
             lastGearMaxSpeedWriteSdkSpeed = nil
             lastGearMaxSpeedWriteReadbackSpeed = nil
+            customProfileRequestedG1 = nil
+            customProfileRequestedG2 = nil
+            customProfileRequestedG3 = nil
+            customProfileSdkG1 = nil
+            customProfileSdkG2 = nil
+            customProfileSdkG3 = nil
+            customProfileReadbackG1 = nil
+            customProfileReadbackG2 = nil
+            customProfileReadbackG3 = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -2111,6 +2233,28 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     pendingGearMaxSpeedWriteExpectedGear = nil
                     pendingGearMaxSpeedWriteExpectedSpeed = nil
                     gearMaxSpeedWriteRequestedAt = nil
+                }
+                if isCustomGearProfileReadbackPhase, let expectedSpeed = customGearProfileExpectedByGear[gearModel.gear] {
+                    customGearProfileReadbackByGear[gearModel.gear] = gearModel.speed
+                    customProfileReadbackG1 = customGearProfileReadbackByGear[1]
+                    customProfileReadbackG2 = customGearProfileReadbackByGear[2]
+                    customProfileReadbackG3 = customGearProfileReadbackByGear[3]
+                    appendLog(.sdkParse, "CUSTOM PROFILE readback sample: gear=\(gearModel.gear) expected=\(expectedSpeed) actual=\(gearModel.speed)")
+                    if customGearProfileReadbackByGear.keys.contains(1),
+                       customGearProfileReadbackByGear.keys.contains(2),
+                       customGearProfileReadbackByGear.keys.contains(3) {
+                        let matches = customGearProfileExpectedByGear.allSatisfy { gear, speed in
+                            customGearProfileReadbackByGear[gear] == speed
+                        }
+                        customGearProfilesStatus = matches ? .passed : .partial
+                        appendLog(
+                            .sdkParse,
+                            "CUSTOM PROFILE validation: expected=\(customGearProfileExpectedByGear) readback=\(customGearProfileReadbackByGear) result=\(customGearProfilesStatus.rawValue)"
+                        )
+                        customGearProfileExpectedByGear = [:]
+                        customGearProfileReadbackByGear = [:]
+                        isCustomGearProfileReadbackPhase = false
+                    }
                 }
             } else if let responseModel = model as? TCB22Model {
                 appendLog(.sdkParse, "SDK parsed TCB22Model: type=\(String(describing: responseModel.responseType)) response=\(responseModel.response)")

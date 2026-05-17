@@ -263,6 +263,9 @@ private struct BLEScooterControlView: View {
     @State private var selectedZeroStartMode = true
     @State private var selectedMetricUnit = true
     @State private var gearMaxSpeedWriteDraft: Double = 25
+    @State private var customProfileG1Draft: Double = 18
+    @State private var customProfileG2Draft: Double = 25
+    @State private var customProfileG3Draft: Double = 32
     @State private var throttleResponseDraft: Double = 5
     @State private var brakeResponseDraft: Double = 5
     @State private var ambientModeDraft = 1
@@ -498,6 +501,46 @@ private struct BLEScooterControlView: View {
             .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Custom Gear Profiles", value: viewModel.customGearProfilesStatus.rawValue)
+                LabeledContent("G1 Target", value: "\(Int(customProfileG1Draft.rounded()))")
+                Slider(value: $customProfileG1Draft, in: 0...50, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+                LabeledContent("G2 Target", value: "\(Int(customProfileG2Draft.rounded()))")
+                Slider(value: $customProfileG2Draft, in: 0...50, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+                LabeledContent("G3 Target", value: "\(Int(customProfileG3Draft.rounded()))")
+                Slider(value: $customProfileG3Draft, in: 0...50, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                Button("Apply Custom Profile") {
+                    viewModel.applyCustomGearProfile(
+                        g1: Int(customProfileG1Draft.rounded()),
+                        g2: Int(customProfileG2Draft.rounded()),
+                        g3: Int(customProfileG3Draft.rounded())
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                let requestedText = "Requested: G1=\(viewModel.customProfileRequestedG1.map(String.init) ?? "n/a") G2=\(viewModel.customProfileRequestedG2.map(String.init) ?? "n/a") G3=\(viewModel.customProfileRequestedG3.map(String.init) ?? "n/a")"
+                let sdkText = "SDK values: G1=\(viewModel.customProfileSdkG1.map(String.init) ?? "n/a") G2=\(viewModel.customProfileSdkG2.map(String.init) ?? "n/a") G3=\(viewModel.customProfileSdkG3.map(String.init) ?? "n/a")"
+                let readbackText = "Readback: G1=\(viewModel.customProfileReadbackG1.map(String.init) ?? "n/a") G2=\(viewModel.customProfileReadbackG2.map(String.init) ?? "n/a") G3=\(viewModel.customProfileReadbackG3.map(String.init) ?? "n/a")"
+                Text(requestedText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(sdkText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(readbackText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Flow: writes use 1500ms spacing, then readback starts after ~4500ms delay.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
                 LabeledContent("Start Mode Validation", value: viewModel.startModeStatus.rawValue)
                 LabeledContent("Current Start Mode", value: startModeLabel(viewModel.isZeroStartModeEnabled))
                 Picker("Start Mode", selection: startModeBinding) {
@@ -673,6 +716,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
             LabeledContent("Core Controls - Gear Max Speed Read", value: viewModel.gearMaxSpeedReadStatus.rawValue)
             LabeledContent("Core Controls - Gear Max Speed Write", value: viewModel.gearMaxSpeedWriteStatus.rawValue)
+            LabeledContent("Core Controls - Custom Gear Profiles", value: viewModel.customGearProfilesStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)
