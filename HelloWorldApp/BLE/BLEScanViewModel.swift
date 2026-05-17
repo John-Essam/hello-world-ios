@@ -1081,6 +1081,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readSingleTripMileage() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "SINGLE TRIP blocked: command channel not ready")
+            mileageSingleTripStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "SINGLE TRIP failed: write characteristic not ready")
+            mileageSingleTripStatus = .failed
+            return
+        }
+        do {
+            singleTripMileageRequestedAt = Date()
+            isSingleTripMileagePending = true
+            let payload = try TCB08Command.readSingleTripMileage()
+            appendLog(.tx, "TX SDK TCB08Command.readSingleTripMileage() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB08Command.readSingleTripMileage()",
+                featureName: "Mileage & Trip / Single-Trip Mileage",
+                expectedModel: "TCB08Model"
+            )
+            scheduleSingleTripMileageDiagnostics()
+        } catch {
+            appendLog(.error, "SINGLE TRIP sdk error: \(error)")
+            mileageSingleTripStatus = .failed
+            isSingleTripMileagePending = false
+            singleTripMileageRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1095,6 +1126,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             ("TCB04Command.writeAmbientLightStatus(true)", try? TCB04Command.writeAmbientLightStatus(true)),
             ("TCB1ACommand.readAmbientLight", try? TCB1ACommand.readAmbientLight()),
             ("TCB1ACommand.writeAmbientLight(type:1,R:255,G:0,B:0)", try? TCB1ACommand.writeAmbientLight(type: 1, R: 255, G: 0, B: 0)),
+            ("TCB08Command.readSingleTripMileage()", try? TCB08Command.readSingleTripMileage()),
             ("TCB30Command.readRemainingMileage()", try? TCB30Command.readRemainingMileage())
         ]
         for entry in cases {
@@ -1426,6 +1458,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             mileageRemainingStatus = .partial
             isRemainingMileagePending = false
             remainingMileageRequestedAt = nil
+        }
+    }
+
+    private func scheduleSingleTripMileageDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isSingleTripMileagePending else { return }
+            let elapsedMs = singleTripMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "SINGLE TRIP diagnostics timeout: no TCB08 response after \(elapsedMs)ms")
+            mileageSingleTripStatus = .partial
+            isSingleTripMileagePending = false
+            singleTripMileageRequestedAt = nil
         }
     }
 
@@ -2334,6 +2378,17 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.sdkParse, "REMAINING MILEAGE result: PASSED")
                     isRemainingMileagePending = false
                     remainingMileageRequestedAt = nil
+                }
+            } else if let singleTripModel = model as? TCB08Model {
+                singleTripMileageKm = singleTripModel.singleTripMileage
+                appendLog(.sdkParse, "SDK parsed TCB08Model: singleTripMileageKm=\(singleTripModel.singleTripMileage)")
+                if isSingleTripMileagePending {
+                    let latencyMs = singleTripMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "SINGLE TRIP callback: latencyMs=\(latencyMs) valueKm=\(singleTripModel.singleTripMileage)")
+                    mileageSingleTripStatus = .passed
+                    appendLog(.sdkParse, "SINGLE TRIP result: PASSED")
+                    isSingleTripMileagePending = false
+                    singleTripMileageRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear

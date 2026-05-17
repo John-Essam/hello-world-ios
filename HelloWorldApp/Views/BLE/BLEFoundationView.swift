@@ -1016,6 +1016,26 @@ private struct BLEScooterControlView: View {
             }
             .padding(12)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Single-Trip Mileage", value: viewModel.singleTripMileageKm.map { String(format: "%.1f km", $0) } ?? "--")
+                LabeledContent("Validation", value: viewModel.mileageSingleTripStatus.rawValue)
+                Text("Last successful read is persisted in UI until disconnected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("Read Single-Trip Mileage") {
+                    viewModel.readSingleTripMileage()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                Text("Official SDK API: `TCB08Command.readSingleTripMileage()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
