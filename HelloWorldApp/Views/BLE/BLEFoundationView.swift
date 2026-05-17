@@ -274,6 +274,7 @@ private struct BLEScooterControlView: View {
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
         case telemetry = "Telemetry"
+        case mileageTrip = "Mileage & Trip"
         case coreControls = "Core Controls"
         case lights = "Lights"
         case logs = "Logs"
@@ -310,6 +311,8 @@ private struct BLEScooterControlView: View {
                         telemetryMotorTempCard
                         telemetryDrivingCurrentCard
                         telemetryBatteryVoltageDetailCard
+                    case .mileageTrip:
+                        mileageTripCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -754,6 +757,11 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Motor Temp", value: viewModel.telemetryMotorTempStatus.rawValue)
             LabeledContent("Telemetry - Driving Current", value: viewModel.telemetryDrivingCurrentStatus.rawValue)
             LabeledContent("Telemetry - Battery Voltage Detail", value: viewModel.telemetryBatteryVoltageDetailStatus.rawValue)
+            LabeledContent("Mileage & Trip - Remaining Mileage", value: viewModel.mileageRemainingStatus.rawValue)
+            LabeledContent("Mileage & Trip - Single Trip", value: viewModel.mileageSingleTripStatus.rawValue)
+            LabeledContent("Mileage & Trip - Total ODO", value: viewModel.mileageTotalOdoStatus.rawValue)
+            LabeledContent("Mileage & Trip - Avg/Max Speed", value: viewModel.mileageSpeedStatsStatus.rawValue)
+            LabeledContent("Mileage & Trip - Riding Time", value: viewModel.mileageRidingTimeStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -981,6 +989,33 @@ private struct BLEScooterControlView: View {
             Text("Source: TCB01 heartbeat stream (`TCB01Model.batteryVoltage`)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var mileageTripCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Mileage & Trip")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Remaining Range", value: viewModel.remainingMileageKm.map { String(format: "%.1f km", $0) } ?? "--")
+                LabeledContent("Validation", value: viewModel.mileageRemainingStatus.rawValue)
+                LabeledContent("Battery Reference", value: viewModel.batteryPercent.map { "\($0)%" } ?? "--")
+
+                Button("Read Remaining Mileage") {
+                    viewModel.readRemainingMileage()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                Text("Official SDK API: `TCB30Command.readRemainingMileage()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

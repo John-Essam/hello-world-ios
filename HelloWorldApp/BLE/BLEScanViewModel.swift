@@ -41,6 +41,11 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryMotorTempStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryDrivingCurrentStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryBatteryVoltageDetailStatus: ValidationStatus = .notTested
+    @Published private(set) var mileageRemainingStatus: ValidationStatus = .notTested
+    @Published private(set) var mileageSingleTripStatus: ValidationStatus = .notTested
+    @Published private(set) var mileageTotalOdoStatus: ValidationStatus = .notTested
+    @Published private(set) var mileageSpeedStatsStatus: ValidationStatus = .failed
+    @Published private(set) var mileageRidingTimeStatus: ValidationStatus = .failed
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -93,6 +98,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var operationalMotorRunningStatus: Bool?
     @Published private(set) var controllerTemperatureC: Int?
     @Published private(set) var drivingCurrentA: Float?
+    @Published private(set) var remainingMileageKm: Float?
+    @Published private(set) var singleTripMileageKm: Float?
+    @Published private(set) var totalOdoMileageKm: Float?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -161,6 +169,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isControllerTempPending = false
     private var drivingCurrentRequestedAt: Date?
     private var isDrivingCurrentPending = false
+    private var remainingMileageRequestedAt: Date?
+    private var isRemainingMileagePending = false
+    private var singleTripMileageRequestedAt: Date?
+    private var isSingleTripMileagePending = false
+    private var totalOdoMileageRequestedAt: Date?
+    private var isTotalOdoMileagePending = false
     private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
 
     private let serviceUUIDs: [CBUUID] = [
@@ -1036,6 +1050,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readRemainingMileage() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "REMAINING MILEAGE blocked: command channel not ready")
+            mileageRemainingStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "REMAINING MILEAGE failed: write characteristic not ready")
+            mileageRemainingStatus = .failed
+            return
+        }
+        do {
+            remainingMileageRequestedAt = Date()
+            isRemainingMileagePending = true
+            let payload = try TCB30Command.readRemainingMileage()
+            appendLog(.tx, "TX SDK TCB30Command.readRemainingMileage() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB30Command.readRemainingMileage()",
+                featureName: "Mileage & Trip / Remaining Mileage",
+                expectedModel: "TCB30Model"
+            )
+            scheduleRemainingMileageDiagnostics()
+        } catch {
+            appendLog(.error, "REMAINING MILEAGE sdk error: \(error)")
+            mileageRemainingStatus = .failed
+            isRemainingMileagePending = false
+            remainingMileageRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1049,7 +1094,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             ("TCB03Command.writeNfcStatus(true)", try? TCB03Command.writeNfcStatus(true)),
             ("TCB04Command.writeAmbientLightStatus(true)", try? TCB04Command.writeAmbientLightStatus(true)),
             ("TCB1ACommand.readAmbientLight", try? TCB1ACommand.readAmbientLight()),
-            ("TCB1ACommand.writeAmbientLight(type:1,R:255,G:0,B:0)", try? TCB1ACommand.writeAmbientLight(type: 1, R: 255, G: 0, B: 0))
+            ("TCB1ACommand.writeAmbientLight(type:1,R:255,G:0,B:0)", try? TCB1ACommand.writeAmbientLight(type: 1, R: 255, G: 0, B: 0)),
+            ("TCB30Command.readRemainingMileage()", try? TCB30Command.readRemainingMileage())
         ]
         for entry in cases {
             guard let payload = entry.payload else {
@@ -1371,6 +1417,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleRemainingMileageDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isRemainingMileagePending else { return }
+            let elapsedMs = remainingMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "REMAINING MILEAGE diagnostics timeout: no TCB30 response after \(elapsedMs)ms")
+            mileageRemainingStatus = .partial
+            isRemainingMileagePending = false
+            remainingMileageRequestedAt = nil
+        }
+    }
+
     private func scheduleGlobalMaxSpeedReadDiagnostics() {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))
@@ -1629,6 +1687,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryMotorTempStatus = .failed
             telemetryDrivingCurrentStatus = .notTested
             telemetryBatteryVoltageDetailStatus = .failed
+            mileageRemainingStatus = .notTested
+            mileageSingleTripStatus = .notTested
+            mileageTotalOdoStatus = .notTested
+            mileageSpeedStatsStatus = .failed
+            mileageRidingTimeStatus = .failed
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1674,10 +1737,19 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
             drivingCurrentA = nil
+            remainingMileageKm = nil
+            singleTripMileageKm = nil
+            totalOdoMileageKm = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
             drivingCurrentRequestedAt = nil
+            isRemainingMileagePending = false
+            remainingMileageRequestedAt = nil
+            isSingleTripMileagePending = false
+            singleTripMileageRequestedAt = nil
+            isTotalOdoMileagePending = false
+            totalOdoMileageRequestedAt = nil
             pendingGearMaxSpeedReadExpectedGear = nil
             gearMaxSpeedReadRequestedAt = nil
             pendingGearMaxSpeedWriteExpectedGear = nil
@@ -1694,6 +1766,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Battery voltage detail command has no official iOS helper/parser (no TCB0CCommand exposed)")
+            appendLog(.error, "SDK_GAP: Riding time has no official iOS command helper/model parser (cmd31 not exposed in SDK commands)")
+            appendLog(.error, "SDK_GAP: Speed stats avg/max has no official iOS command helper/model parser (cmd32 not exposed in SDK commands)")
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1765,6 +1839,12 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
             drivingCurrentRequestedAt = nil
+            isRemainingMileagePending = false
+            remainingMileageRequestedAt = nil
+            isSingleTripMileagePending = false
+            singleTripMileageRequestedAt = nil
+            isTotalOdoMileagePending = false
+            totalOdoMileageRequestedAt = nil
             telemetryBatteryPercentageStatus = .notTested
             batteryPercent = nil
             telemetryBatteryVoltageStatus = .notTested
@@ -1779,6 +1859,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
             telemetryBatteryVoltageDetailStatus = .notTested
+            mileageRemainingStatus = .notTested
+            mileageSingleTripStatus = .notTested
+            mileageTotalOdoStatus = .notTested
+            mileageSpeedStatsStatus = .notTested
+            mileageRidingTimeStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -1792,6 +1877,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
             drivingCurrentA = nil
+            remainingMileageKm = nil
+            singleTripMileageKm = nil
+            totalOdoMileageKm = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -1894,6 +1982,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
             telemetryBatteryVoltageDetailStatus = .notTested
+            mileageRemainingStatus = .notTested
+            mileageSingleTripStatus = .notTested
+            mileageTotalOdoStatus = .notTested
+            mileageSpeedStatsStatus = .notTested
+            mileageRidingTimeStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -1907,6 +2000,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
             drivingCurrentA = nil
+            remainingMileageKm = nil
+            singleTripMileageKm = nil
+            totalOdoMileageKm = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -2227,6 +2323,17 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingFrontLightExpected = nil
                     frontLightRequestedAt = nil
+                }
+            } else if let remainingMileageModel = model as? TCB30Model {
+                remainingMileageKm = remainingMileageModel.remainingMileage
+                appendLog(.sdkParse, "SDK parsed TCB30Model: remainingMileageKm=\(remainingMileageModel.remainingMileage)")
+                if isRemainingMileagePending {
+                    let latencyMs = remainingMileageRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "REMAINING MILEAGE callback: latencyMs=\(latencyMs) valueKm=\(remainingMileageModel.remainingMileage)")
+                    mileageRemainingStatus = .passed
+                    appendLog(.sdkParse, "REMAINING MILEAGE result: PASSED")
+                    isRemainingMileagePending = false
+                    remainingMileageRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear

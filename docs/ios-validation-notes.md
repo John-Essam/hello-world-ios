@@ -56,6 +56,12 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Driving Current | `TCB0BCommand.readDrivingCurrent()` + `TCB0BModel` parse | PASSED | - | User confirmed feature passes; `0.0A` alone is not treated as SDK bug when RX + parser are healthy. |
 | Battery Voltage Detail | No official iOS `TCB0C` command helper/model flow exposed | FAILED | IOS_SDK_GAP | SDK has `cmd0C` metadata but no official helper/parser flow; issue [#9](https://github.com/John-Essam/hello-world-ios/issues/9). |
 
+## Mileage & Trip
+
+| Feature | Official iOS API / Flow | Status | Classification | Evidence |
+|---|---|---|---|---|
+| Remaining Mileage | `TCB30Command.readRemainingMileage()` + `TCB30Model.remainingMileage` | NOT_TESTED | - | Dedicated Mileage & Trip section added with TX/RX/SDK-parse/timing logs and timeout diagnostics; scooter-side validation pending. |
+
 ## Investigation Notes (2026-05-14)
 
 - Repeated scan callbacks were caused by app configuration: `CBCentralManagerScanOptionAllowDuplicatesKey` was set to `true`, which intentionally emits a discovery callback for every advertisement packet.
