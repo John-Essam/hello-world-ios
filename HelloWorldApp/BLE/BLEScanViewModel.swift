@@ -17,6 +17,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var cruiseControlStatus: ValidationStatus = .notTested
     @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
+    @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -29,6 +30,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastKnownCruiseControlEnabled: Bool?
     @Published private(set) var currentGearSelection: Int?
     @Published private(set) var isZeroStartModeEnabled: Bool?
+    @Published private(set) var isMetricUnitEnabled: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -59,6 +61,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingGearExpected: Int?
     private var startModeCommandStartedAt: Date?
     private var pendingZeroStartExpected: Bool?
+    private var unitSystemCommandStartedAt: Date?
+    private var pendingMetricUnitExpected: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -360,6 +364,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setUnitSystem(metric: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "UNIT blocked: command channel not ready")
+            unitSystemStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "UNIT failed: write characteristic not ready")
+            unitSystemStatus = .failed
+            return
+        }
+        do {
+            unitSystemCommandStartedAt = Date()
+            pendingMetricUnitExpected = metric
+            let payload = try TCB02Command.writeMetricMileSystemTheme(isKM: metric)
+            appendLog(.tx, "TX SDK TCB02Command.writeMetricMileSystemTheme(isKM:\(metric)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleUnitDiagnostics(expectedMetric: metric)
+        } catch {
+            appendLog(.error, "UNIT sdk error: \(error)")
+            unitSystemStatus = .failed
+            pendingMetricUnitExpected = nil
+            unitSystemCommandStartedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -476,6 +506,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             startModeStatus = .partial
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
+        }
+    }
+
+    private func scheduleUnitDiagnostics(expectedMetric: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingMetricUnitExpected == expectedMetric else { return }
+            let elapsedMs = unitSystemCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "UNIT diagnostics timeout: no matching heartbeat confirmation after \(elapsedMs)ms expectedMetric=\(expectedMetric)"
+            )
+            unitSystemStatus = .partial
+            pendingMetricUnitExpected = nil
+            unitSystemCommandStartedAt = nil
         }
     }
 
@@ -701,11 +746,13 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             cruiseControlStatus = .notTested
             gearSelectionStatus = .notTested
             startModeStatus = .notTested
+            unitSystemStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
             currentGearSelection = nil
             isZeroStartModeEnabled = nil
+            isMetricUnitEnabled = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -739,6 +786,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearCommandStartedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
+            pendingMetricUnitExpected = nil
+            unitSystemCommandStartedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -771,6 +820,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearCommandStartedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
+            pendingMetricUnitExpected = nil
+            unitSystemCommandStartedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -941,6 +992,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 lastKnownCruiseControlEnabled = heartbeatModel.cruiseControlFunction
                 currentGearSelection = heartbeatModel.gear
                 isZeroStartModeEnabled = !heartbeatModel.startMode
+                isMetricUnitEnabled = !heartbeatModel.metricMileUnit
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -999,6 +1051,20 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingZeroStartExpected = nil
                     startModeCommandStartedAt = nil
+                }
+                if let expectedMetric = pendingMetricUnitExpected {
+                    let actualMetric = !heartbeatModel.metricMileUnit
+                    let latencyMs = unitSystemCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "UNIT heartbeat confirmation: latencyMs=\(latencyMs) expectedMetric=\(expectedMetric) actualMetric=\(actualMetric)")
+                    if expectedMetric == actualMetric {
+                        unitSystemStatus = .passed
+                        appendLog(.sdkParse, "UNIT result: PASSED")
+                    } else {
+                        unitSystemStatus = .partial
+                        appendLog(.error, "UNIT heartbeat mismatch expectedMetric=\(expectedMetric) actualMetric=\(actualMetric)")
+                    }
+                    pendingMetricUnitExpected = nil
+                    unitSystemCommandStartedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear

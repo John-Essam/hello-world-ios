@@ -260,6 +260,7 @@ private struct BLEScooterControlView: View {
     @State private var selectedSection: Section = .foundation
     @State private var selectedGear = 0
     @State private var selectedZeroStartMode = true
+    @State private var selectedMetricUnit = true
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
@@ -423,6 +424,18 @@ private struct BLEScooterControlView: View {
             }
             .padding(.bottom, 8)
 
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Unit Validation", value: viewModel.unitSystemStatus.rawValue)
+                LabeledContent("Current Unit", value: unitLabel(viewModel.isMetricUnitEnabled))
+                Picker("Unit", selection: unitBinding) {
+                    Text("KM").tag(true)
+                    Text("Mile").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -454,6 +467,11 @@ private struct BLEScooterControlView: View {
                 selectedZeroStartMode = newMode
             }
         }
+        .onChange(of: viewModel.isMetricUnitEnabled) { _, newUnit in
+            if let newUnit {
+                selectedMetricUnit = newUnit
+            }
+        }
     }
 
     private var validationStatusCard: some View {
@@ -468,6 +486,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
+            LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)
@@ -575,6 +594,23 @@ private struct BLEScooterControlView: View {
     private func startModeLabel(_ isZeroStart: Bool?) -> String {
         guard let isZeroStart else { return "Unknown" }
         return isZeroStart ? "Zero Start" : "Kick Start"
+    }
+
+    private var unitBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.isMetricUnitEnabled ?? selectedMetricUnit
+            },
+            set: { newValue in
+                selectedMetricUnit = newValue
+                viewModel.setUnitSystem(metric: newValue)
+            }
+        )
+    }
+
+    private func unitLabel(_ isMetric: Bool?) -> String {
+        guard let isMetric else { return "Unknown" }
+        return isMetric ? "KM" : "Mile"
     }
 
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {
