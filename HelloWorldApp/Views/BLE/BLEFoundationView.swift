@@ -257,17 +257,45 @@ private struct BLEScanScreen: View {
 
 private struct BLEScooterControlView: View {
     @ObservedObject var viewModel: BLEFoundationViewModel
+    @State private var selectedSection: Section = .foundation
+
+    private enum Section: String, CaseIterable, Identifiable {
+        case foundation = "Foundation"
+        case coreControls = "Core Controls"
+        case lights = "Lights"
+        case logs = "Logs"
+
+        var id: String { rawValue }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                connectedScooterCard
-                coreControlsCard
-                heartbeatCard
-                validationStatusCard
-                logsCard
+        VStack(spacing: 12) {
+            Picker("Section", selection: $selectedSection) {
+                ForEach(Section.allCases) { section in
+                    Text(section.rawValue).tag(section)
+                }
             }
-            .padding(16)
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    switch selectedSection {
+                    case .foundation:
+                        connectedScooterCard
+                        heartbeatCard
+                        validationStatusCard
+                    case .coreControls:
+                        coreControlsCard
+                    case .lights:
+                        lightsComingSoonCard
+                    case .logs:
+                        logsCard
+                    }
+                }
+                .padding(16)
+            }
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Scooter Controls")
@@ -434,6 +462,18 @@ private struct BLEScooterControlView: View {
                     .padding(.vertical, 4)
                 }
             }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var lightsComingSoonCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Lights")
+                .font(.headline)
+            Text("Front Light, Ambient Power, and Ambient RGB/Mode controls will appear here as each feature is implemented and validated.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
