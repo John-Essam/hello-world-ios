@@ -41,16 +41,16 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 
 | Feature | Official iOS API / Flow | Status | Classification | Evidence |
 |---|---|---|---|---|
-| Battery Percentage | `TCB01Model.power` from heartbeat notify stream | NOT_TESTED | - | Dedicated Telemetry card with live updates from parsed `TCB01Model`; validation state and logs wired. |
-| Battery Voltage | `TCB01Model.batteryVoltage` from heartbeat notify stream | NOT_TESTED | - | Dedicated Telemetry card shows raw + converted volts from heartbeat parse; validation state wired. |
-| Real-Time Speed | `TCB01Model.realTimeSpeed` from heartbeat notify stream | NOT_TESTED | - | Dedicated live speed widget with heartbeat-driven updates and validation state. |
-| Fault Flags | `TCB01Model` fault bitfields | NOT_TESTED | - | Fault labels decoded from official SDK model fields and rendered with “No faults” fallback. |
-| Operational Status Flags | `TCB01Model` status bitfields (+ `TCB03Model` for NFC when available) | NOT_TESTED | - | Live status chips for lock/front light/cruise/charging/push/motor; NFC sourced from official `TCB03Model` callback when present. |
-| Controller Temperature | `TCB0ACommand.readTemp()` + `TCB0AModel` parse (`type == 0`) | NOT_TESTED | - | TX/RX/parse/timing diagnostics implemented with explicit pass/partial/fail behavior. |
-| Battery Temperature | No documented battery-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | Current iOS SDK source exposes `TCB0ACommand.readTemp()` only; no official `readTemp(.battery)` helper path. |
-| Motor Temperature | No documented motor-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | Current iOS SDK source exposes `TCB0ACommand.readTemp()` only; no official `readTemp(.motor)` helper path. |
-| Driving Current | `TCB0BCommand.readDrivingCurrent()` + `TCB0BModel` parse | NOT_TESTED | - | TX/RX/parse/timing diagnostics and dedicated telemetry UI card implemented. |
-| Battery Voltage Detail | No official iOS `TCB0C` command helper/model flow exposed | FAILED | IOS_SDK_GAP | SDK has `cmd0C` enum metadata but no command helper/model parser to execute this feature via official iOS SDK flow. |
+| Battery Percentage | `TCB01Model.power` from heartbeat notify stream | PASSED | - | User-validated on device: live heartbeat values update correctly. |
+| Battery Voltage | `TCB01Model.batteryVoltage` from heartbeat notify stream | PASSED | - | User-validated on device with stable heartbeat-driven updates. |
+| Real-Time Speed | `TCB01Model.realTimeSpeed` from heartbeat notify stream | PASSED | - | User-validated on device during telemetry testing. |
+| Fault Flags | `TCB01Model` fault bitfields | PASSED | - | User-validated fault/status decoding flow with readable labels. |
+| Operational Status Flags | `TCB01Model` status bitfields (+ `TCB03Model` for NFC when available) | PASSED | - | User-validated live status flag updates from heartbeat stream. |
+| Controller Temperature | `TCB0ACommand.readTemp()` + `TCB0AModel` parse (`type == 0`) | PASSED | - | User-validated with TX/RX + parsed model flow. |
+| Battery Temperature | No documented battery-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | No official `readTemp(.battery)` API in iOS SDK; issue [#7](https://github.com/John-Essam/hello-world-ios/issues/7). |
+| Motor Temperature | No documented motor-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | No official `readTemp(.motor)` API in iOS SDK; issue [#8](https://github.com/John-Essam/hello-world-ios/issues/8). |
+| Driving Current | `TCB0BCommand.readDrivingCurrent()` + `TCB0BModel` parse | PASSED | - | User confirmed feature passes; `0.0A` alone is not treated as SDK bug when RX + parser are healthy. |
+| Battery Voltage Detail | No official iOS `TCB0C` command helper/model flow exposed | FAILED | IOS_SDK_GAP | SDK has `cmd0C` metadata but no official helper/parser flow; issue [#9](https://github.com/John-Essam/hello-world-ios/issues/9). |
 
 ## Investigation Notes (2026-05-14)
 
