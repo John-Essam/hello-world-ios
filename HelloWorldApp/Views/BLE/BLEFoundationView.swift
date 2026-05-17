@@ -301,6 +301,7 @@ private struct BLEScooterControlView: View {
                         telemetrySpeedCard
                         telemetryFaultFlagsCard
                         telemetryOperationalFlagsCard
+                        telemetryControllerTempCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -615,6 +616,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Real-Time Speed", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
             LabeledContent("Telemetry - Fault Flags", value: viewModel.telemetryFaultFlagsStatus.rawValue)
             LabeledContent("Telemetry - Operational Flags", value: viewModel.telemetryOperationalFlagsStatus.rawValue)
+            LabeledContent("Telemetry - Controller Temp", value: viewModel.telemetryControllerTempStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -733,6 +735,28 @@ private struct BLEScooterControlView: View {
         .padding(.vertical, 8)
         .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .foregroundStyle(tint)
+    }
+
+    private var telemetryControllerTempCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Controller Temperature")
+                .font(.headline)
+
+            LabeledContent("Value", value: viewModel.controllerTemperatureC.map { "\($0) °C" } ?? "--")
+            LabeledContent("Validation", value: viewModel.telemetryControllerTempStatus.rawValue)
+
+            Button("Read Controller Temperature") {
+                viewModel.readControllerTemperature()
+            }
+            .buttonStyle(.bordered)
+            .disabled(!viewModel.isCommandChannelReady)
+
+            Text("Official SDK API: `TCB0ACommand.readTemp()`")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var telemetryVoltageCard: some View {
