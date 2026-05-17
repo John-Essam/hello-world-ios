@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct BLEFoundationView: View {
     @StateObject private var viewModel = BLEFoundationViewModel()
@@ -263,6 +264,8 @@ private struct BLEScooterControlView: View {
     @State private var selectedMetricUnit = true
     @State private var throttleResponseDraft: Double = 5
     @State private var brakeResponseDraft: Double = 5
+    @State private var ambientModeDraft = 1
+    @State private var ambientColorDraft: Color = .cyan
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
@@ -561,6 +564,20 @@ private struct BLEScooterControlView: View {
                 brakeResponseDraft = Double(newValue)
             }
         }
+        .onChange(of: viewModel.ambientLightMode) { _, newMode in
+            if let newMode, (1...3).contains(newMode) {
+                ambientModeDraft = newMode
+            }
+        }
+        .onChange(of: viewModel.ambientLightRed) { _, _ in
+            syncAmbientColorFromModel()
+        }
+        .onChange(of: viewModel.ambientLightGreen) { _, _ in
+            syncAmbientColorFromModel()
+        }
+        .onChange(of: viewModel.ambientLightBlue) { _, _ in
+            syncAmbientColorFromModel()
+        }
     }
 
     private var validationStatusCard: some View {
@@ -585,6 +602,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent("Lights - Front Light", value: viewModel.frontLightStatus.rawValue)
             LabeledContent("Lights - Ambient Power", value: viewModel.ambientLightStatus.rawValue)
+            LabeledContent("Lights - Ambient RGB/Mode", value: viewModel.ambientLightStyleStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -658,6 +676,42 @@ private struct BLEScooterControlView: View {
 
                     Button("Ambient OFF") {
                         viewModel.setAmbientLightStatus(enabled: false)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Ambient RGB/Mode Validation", value: viewModel.ambientLightStyleStatus.rawValue)
+                LabeledContent("Current Mode", value: ambientModeLabel(viewModel.ambientLightMode))
+                Picker("Ambient Mode", selection: $ambientModeDraft) {
+                    Text("Solid").tag(1)
+                    Text("Breathing").tag(2)
+                    Text("7-Color Magic").tag(3)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!viewModel.isCommandChannelReady)
+
+                ColorPicker("Ambient Color", selection: $ambientColorDraft, supportsOpacity: false)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                HStack {
+                    Button("Apply Ambient Style") {
+                        let rgb = colorComponents(for: ambientColorDraft)
+                        viewModel.writeAmbientLightStyle(
+                            mode: ambientModeDraft,
+                            red: rgb.red,
+                            green: rgb.green,
+                            blue: rgb.blue
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Read Ambient Style") {
+                        viewModel.readAmbientLightStyle()
                     }
                     .buttonStyle(.bordered)
                     .disabled(!viewModel.isCommandChannelReady)
@@ -741,6 +795,47 @@ private struct BLEScooterControlView: View {
     private func unitLabel(_ isMetric: Bool?) -> String {
         guard let isMetric else { return "Unknown" }
         return isMetric ? "KM" : "Mile"
+    }
+
+    private func ambientModeLabel(_ mode: Int?) -> String {
+        guard let mode else { return "Unknown" }
+        switch mode {
+        case 1: return "Solid"
+        case 2: return "Breathing"
+        case 3: return "7-Color Magic"
+        default: return "Mode \(mode)"
+        }
+    }
+
+    private func syncAmbientColorFromModel() {
+        guard
+            let red = viewModel.ambientLightRed,
+            let green = viewModel.ambientLightGreen,
+            let blue = viewModel.ambientLightBlue
+        else { return }
+        ambientColorDraft = Color(
+            .sRGB,
+            red: Double(red) / 255.0,
+            green: Double(green) / 255.0,
+            blue: Double(blue) / 255.0,
+            opacity: 1.0
+        )
+    }
+
+    private func colorComponents(for color: Color) -> (red: Int, green: Int, blue: Int) {
+        let uiColor = UIColor(color)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return (
+                red: Int((red * 255.0).rounded()),
+                green: Int((green * 255.0).rounded()),
+                blue: Int((blue * 255.0).rounded())
+            )
+        }
+        return (red: 0, green: 255, blue: 255)
     }
 
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {

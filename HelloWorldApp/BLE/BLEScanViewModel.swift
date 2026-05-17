@@ -26,6 +26,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var nfcWriteStatus: ValidationStatus = .notTested
     @Published private(set) var frontLightStatus: ValidationStatus = .notTested
     @Published private(set) var ambientLightStatus: ValidationStatus = .notTested
+    @Published private(set) var ambientLightStyleStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -44,6 +45,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var isNfcEnabled: Bool?
     @Published private(set) var isFrontLightOn: Bool?
     @Published private(set) var isAmbientLightOn: Bool?
+    @Published private(set) var ambientLightMode: Int?
+    @Published private(set) var ambientLightRed: Int?
+    @Published private(set) var ambientLightGreen: Int?
+    @Published private(set) var ambientLightBlue: Int?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -92,6 +97,10 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingFrontLightExpected: Bool?
     private var ambientLightRequestedAt: Date?
     private var pendingAmbientLightExpected: Bool?
+    private var ambientStyleReadRequestedAt: Date?
+    private var isAmbientStyleReadPending = false
+    private var ambientStyleWriteRequestedAt: Date?
+    private var pendingAmbientStyleExpected: (mode: Int, red: Int, green: Int, blue: Int)?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -637,6 +646,68 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readAmbientLightStyle() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "AMBIENT STYLE READ blocked: command channel not ready")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "AMBIENT STYLE READ failed: write characteristic not ready")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        do {
+            ambientStyleReadRequestedAt = Date()
+            isAmbientStyleReadPending = true
+            let payload = try TCB1ACommand.readAmbientLight()
+            appendLog(.tx, "TX SDK TCB1ACommand.readAmbientLight() bytes=\(payload.hexString)")
+            send(payload)
+            scheduleAmbientStyleReadDiagnostics()
+        } catch {
+            appendLog(.error, "AMBIENT STYLE READ sdk error: \(error)")
+            ambientLightStyleStatus = .failed
+            isAmbientStyleReadPending = false
+            ambientStyleReadRequestedAt = nil
+        }
+    }
+
+    func writeAmbientLightStyle(mode: Int, red: Int, green: Int, blue: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "AMBIENT STYLE WRITE blocked: command channel not ready")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "AMBIENT STYLE WRITE failed: write characteristic not ready")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        guard (1...3).contains(mode) else {
+            appendLog(.error, "AMBIENT STYLE WRITE rejected: mode out of range \(mode)")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        guard (0...255).contains(red), (0...255).contains(green), (0...255).contains(blue) else {
+            appendLog(.error, "AMBIENT STYLE WRITE rejected: RGB out of range r=\(red) g=\(green) b=\(blue)")
+            ambientLightStyleStatus = .failed
+            return
+        }
+        do {
+            ambientStyleWriteRequestedAt = Date()
+            pendingAmbientStyleExpected = (mode: mode, red: red, green: green, blue: blue)
+            let payload = try TCB1ACommand.writeAmbientLight(type: mode, R: red, G: green, B: blue)
+            appendLog(.tx, "TX SDK TCB1ACommand.writeAmbientLight(type:\(mode),R:\(red),G:\(green),B:\(blue)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleAmbientStyleWriteDiagnostics(expected: (mode: mode, red: red, green: green, blue: blue))
+        } catch {
+            appendLog(.error, "AMBIENT STYLE WRITE sdk error: \(error)")
+            ambientLightStyleStatus = .failed
+            pendingAmbientStyleExpected = nil
+            ambientStyleWriteRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -864,6 +935,31 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             ambientLightStatus = .partial
             pendingAmbientLightExpected = nil
             ambientLightRequestedAt = nil
+        }
+    }
+
+    private func scheduleAmbientStyleReadDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isAmbientStyleReadPending else { return }
+            let elapsedMs = ambientStyleReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "AMBIENT STYLE READ diagnostics timeout: no TCB1A response after \(elapsedMs)ms")
+            ambientLightStyleStatus = .partial
+            isAmbientStyleReadPending = false
+            ambientStyleReadRequestedAt = nil
+        }
+    }
+
+    private func scheduleAmbientStyleWriteDiagnostics(expected: (mode: Int, red: Int, green: Int, blue: Int)) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard let pending = pendingAmbientStyleExpected else { return }
+            guard pending.mode == expected.mode && pending.red == expected.red && pending.green == expected.green && pending.blue == expected.blue else { return }
+            let elapsedMs = ambientStyleWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "AMBIENT STYLE WRITE diagnostics timeout: no TCB1A confirmation after \(elapsedMs)ms")
+            ambientLightStyleStatus = .partial
+            pendingAmbientStyleExpected = nil
+            ambientStyleWriteRequestedAt = nil
         }
     }
 
@@ -1098,6 +1194,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcWriteStatus = .notTested
             frontLightStatus = .notTested
             ambientLightStatus = .notTested
+            ambientLightStyleStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1109,6 +1206,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isNfcEnabled = nil
             isFrontLightOn = nil
             isAmbientLightOn = nil
+            ambientLightMode = nil
+            ambientLightRed = nil
+            ambientLightGreen = nil
+            ambientLightBlue = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1160,6 +1261,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             frontLightRequestedAt = nil
             pendingAmbientLightExpected = nil
             ambientLightRequestedAt = nil
+            isAmbientStyleReadPending = false
+            ambientStyleReadRequestedAt = nil
+            pendingAmbientStyleExpected = nil
+            ambientStyleWriteRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1210,6 +1315,10 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             frontLightRequestedAt = nil
             pendingAmbientLightExpected = nil
             ambientLightRequestedAt = nil
+            isAmbientStyleReadPending = false
+            ambientStyleReadRequestedAt = nil
+            pendingAmbientStyleExpected = nil
+            ambientStyleWriteRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1549,6 +1658,42 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingAmbientLightExpected = nil
                     ambientLightRequestedAt = nil
+                }
+            } else if let ambientStyleModel = model as? TCB1AModel {
+                ambientLightMode = ambientStyleModel.magicLightMode
+                ambientLightRed = ambientStyleModel.R
+                ambientLightGreen = ambientStyleModel.G
+                ambientLightBlue = ambientStyleModel.B
+                appendLog(
+                    .sdkParse,
+                    "SDK parsed TCB1AModel: mode=\(ambientStyleModel.magicLightMode) R=\(ambientStyleModel.R) G=\(ambientStyleModel.G) B=\(ambientStyleModel.B)"
+                )
+                if isAmbientStyleReadPending {
+                    let latencyMs = ambientStyleReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "AMBIENT STYLE READ callback: latencyMs=\(latencyMs) mode=\(ambientStyleModel.magicLightMode)")
+                    ambientLightStyleStatus = .passed
+                    appendLog(.sdkParse, "AMBIENT STYLE READ result: PASSED")
+                    isAmbientStyleReadPending = false
+                    ambientStyleReadRequestedAt = nil
+                }
+                if let expected = pendingAmbientStyleExpected {
+                    let latencyMs = ambientStyleWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    let modeMatches = expected.mode == ambientStyleModel.magicLightMode
+                    let rgbMatches = expected.red == ambientStyleModel.R && expected.green == ambientStyleModel.G && expected.blue == ambientStyleModel.B
+                    let matches = expected.mode == 3 ? modeMatches : (modeMatches && rgbMatches)
+                    appendLog(
+                        .sdkParse,
+                        "AMBIENT STYLE WRITE callback: latencyMs=\(latencyMs) expectedMode=\(expected.mode) actualMode=\(ambientStyleModel.magicLightMode) expectedRGB=(\(expected.red),\(expected.green),\(expected.blue)) actualRGB=(\(ambientStyleModel.R),\(ambientStyleModel.G),\(ambientStyleModel.B))"
+                    )
+                    if matches {
+                        ambientLightStyleStatus = .passed
+                        appendLog(.sdkParse, "AMBIENT STYLE WRITE result: PASSED")
+                    } else {
+                        ambientLightStyleStatus = .partial
+                        appendLog(.error, "AMBIENT STYLE WRITE mismatch between expected and parsed model")
+                    }
+                    pendingAmbientStyleExpected = nil
+                    ambientStyleWriteRequestedAt = nil
                 }
             } else if let nfcModel = model as? TCB03Model {
                 isNfcEnabled = nfcModel.nfcStatus

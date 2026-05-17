@@ -35,6 +35,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 |---|---|---|---|---|
 | Front Light Control | `TCB04Command.writeFrontLightStatus(_:)` + heartbeat confirmation from `TCB01Model.headlight` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; heartbeat confirmation logic wired for validation on real scooter |
 | Ambient Light ON/OFF | `TCB04Command.writeAmbientLightStatus(_:)` + parsed `TCB04Model.ambientLightStatus` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; TCB04 callback confirmation wired for validation |
+| Ambient Light RGB / Modes | `TCB1ACommand.readAmbientLight()` + `TCB1ACommand.writeAmbientLight(type:R:G:B)` + parsed `TCB1AModel` | NOT_TESTED | - | Solid/Breathing/7-Color Magic mode picker + color picker with TX/RX/SDK-parse/timing logs and parsed model confirmation |
 
 ## Investigation Notes (2026-05-14)
 
