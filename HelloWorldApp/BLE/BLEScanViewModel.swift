@@ -35,6 +35,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryControllerTempStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryBatteryTempStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryMotorTempStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryDrivingCurrentStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -69,6 +70,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var operationalPushAssistStatus: Bool?
     @Published private(set) var operationalMotorRunningStatus: Bool?
     @Published private(set) var controllerTemperatureC: Int?
+    @Published private(set) var drivingCurrentA: Float?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -123,6 +125,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingAmbientStyleExpected: (mode: Int, red: Int, green: Int, blue: Int)?
     private var controllerTempRequestedAt: Date?
     private var isControllerTempPending = false
+    private var drivingCurrentRequestedAt: Date?
+    private var isDrivingCurrentPending = false
     private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
 
     private let serviceUUIDs: [CBUUID] = [
@@ -806,6 +810,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readDrivingCurrent() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "DRIVING CURRENT blocked: command channel not ready")
+            telemetryDrivingCurrentStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "DRIVING CURRENT failed: write characteristic not ready")
+            telemetryDrivingCurrentStatus = .failed
+            return
+        }
+        do {
+            drivingCurrentRequestedAt = Date()
+            isDrivingCurrentPending = true
+            let payload = try TCB0BCommand.readDrivingCurrent()
+            appendLog(.tx, "TX SDK TCB0BCommand.readDrivingCurrent() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB0BCommand.readDrivingCurrent()",
+                featureName: "Telemetry / Driving Current",
+                expectedModel: "TCB0BModel"
+            )
+            scheduleDrivingCurrentDiagnostics()
+        } catch {
+            appendLog(.error, "DRIVING CURRENT sdk error: \(error)")
+            telemetryDrivingCurrentStatus = .failed
+            isDrivingCurrentPending = false
+            drivingCurrentRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1097,6 +1132,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleDrivingCurrentDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isDrivingCurrentPending else { return }
+            let elapsedMs = drivingCurrentRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "DRIVING CURRENT diagnostics timeout: no TCB0B response after \(elapsedMs)ms")
+            telemetryDrivingCurrentStatus = .partial
+            isDrivingCurrentPending = false
+            drivingCurrentRequestedAt = nil
+        }
+    }
+
     var bluetoothStateLabel: String {
         switch bluetoothState {
         case .unknown: return "Unknown"
@@ -1337,6 +1384,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryControllerTempStatus = .notTested
             telemetryBatteryTempStatus = .failed
             telemetryMotorTempStatus = .failed
+            telemetryDrivingCurrentStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1364,8 +1412,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalPushAssistStatus = nil
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
+            drivingCurrentA = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
+            isDrivingCurrentPending = false
+            drivingCurrentRequestedAt = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
@@ -1426,6 +1477,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleWriteRequestedAt = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
+            isDrivingCurrentPending = false
+            drivingCurrentRequestedAt = nil
             telemetryBatteryPercentageStatus = .notTested
             batteryPercent = nil
             telemetryBatteryVoltageStatus = .notTested
@@ -1438,6 +1491,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryControllerTempStatus = .notTested
             telemetryBatteryTempStatus = .notTested
             telemetryMotorTempStatus = .notTested
+            telemetryDrivingCurrentStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1446,6 +1500,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalPushAssistStatus = nil
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
+            drivingCurrentA = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1503,6 +1558,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleWriteRequestedAt = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
+            isDrivingCurrentPending = false
+            drivingCurrentRequestedAt = nil
             telemetryBatteryPercentageStatus = .notTested
             batteryPercent = nil
             telemetryBatteryVoltageStatus = .notTested
@@ -1515,6 +1572,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryControllerTempStatus = .notTested
             telemetryBatteryTempStatus = .notTested
             telemetryMotorTempStatus = .notTested
+            telemetryDrivingCurrentStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1523,6 +1581,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalPushAssistStatus = nil
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
+            drivingCurrentA = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1907,6 +1966,17 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     isControllerTempPending = false
                     controllerTempRequestedAt = nil
+                }
+            } else if let currentModel = model as? TCB0BModel {
+                appendLog(.sdkParse, "SDK parsed TCB0BModel: drivingCurrent=\(currentModel.drivingCurrent)")
+                if isDrivingCurrentPending {
+                    let latencyMs = drivingCurrentRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "DRIVING CURRENT callback: latencyMs=\(latencyMs) valueA=\(currentModel.drivingCurrent)")
+                    drivingCurrentA = currentModel.drivingCurrent
+                    telemetryDrivingCurrentStatus = .passed
+                    appendLog(.sdkParse, "DRIVING CURRENT result: PASSED")
+                    isDrivingCurrentPending = false
+                    drivingCurrentRequestedAt = nil
                 }
             } else if let ambientModel = model as? TCB04Model {
                 isAmbientLightOn = ambientModel.ambientLightStatus

@@ -304,6 +304,7 @@ private struct BLEScooterControlView: View {
                         telemetryControllerTempCard
                         telemetryBatteryTempCard
                         telemetryMotorTempCard
+                        telemetryDrivingCurrentCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -621,6 +622,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Controller Temp", value: viewModel.telemetryControllerTempStatus.rawValue)
             LabeledContent("Telemetry - Battery Temp", value: viewModel.telemetryBatteryTempStatus.rawValue)
             LabeledContent("Telemetry - Motor Temp", value: viewModel.telemetryMotorTempStatus.rawValue)
+            LabeledContent("Telemetry - Driving Current", value: viewModel.telemetryDrivingCurrentStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -790,6 +792,28 @@ private struct BLEScooterControlView: View {
             LabeledContent("Validation", value: viewModel.telemetryMotorTempStatus.rawValue)
             LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
             Text("No documented helper equivalent to `readTemp(.motor)` exists in current iOS SDK source.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryDrivingCurrentCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Driving Current")
+                .font(.headline)
+
+            LabeledContent("Value", value: viewModel.drivingCurrentA.map { String(format: "%.1f A", $0) } ?? "--")
+            LabeledContent("Validation", value: viewModel.telemetryDrivingCurrentStatus.rawValue)
+
+            Button("Read Driving Current") {
+                viewModel.readDrivingCurrent()
+            }
+            .buttonStyle(.bordered)
+            .disabled(!viewModel.isCommandChannelReady)
+
+            Text("Official SDK API: `TCB0BCommand.readDrivingCurrent()`")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
