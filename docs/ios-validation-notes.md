@@ -66,6 +66,15 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Speed Stats (avg / max) | No official iOS SDK command helper/model parser for `cmd32` | FAILED | IOS_SDK_GAP | iOS SDK exposes function code metadata only; no documented command API or parser model path is available in SDK source. |
 | Riding Time | No official iOS SDK command helper/model parser for `cmd31` | FAILED | IOS_SDK_GAP | iOS SDK exposes function code metadata only; no documented command API or parser model path is available in SDK source. |
 
+## Diagnostics
+
+| Feature | Official iOS API / Flow | Status | Classification | Evidence |
+|---|---|---|---|---|
+| Serial Number (0x001D) | No official command helper/model parser exposed | FAILED | IOS_SDK_GAP | `TCBConstant` includes `cmd1D`, but no `TCB1DCommand` helper or parser model path is exposed in current SDK source. |
+| Detailed Device Info (0x001E) | No official command helper/model parser exposed | FAILED | IOS_SDK_GAP | No official `cmd1E` command helper/model parser/callback abstraction found in current iOS SDK source. |
+| Meter Version | `TCB11Command.readMeterVersion()` + `TCB11MeterModel` parse | NOT_TESTED | - | Diagnostics card + TX/RX/parsed model/timeout logs implemented with official SDK command flow only. |
+| Controller Version | `TCB11Command.readControllerVersion()` + `TCB11ControllerModel` parse | NOT_TESTED | - | Diagnostics card + TX/RX/parsed model/timeout logs implemented with official SDK command flow only. |
+
 ## Investigation Notes (2026-05-14)
 
 - Repeated scan callbacks were caused by app configuration: `CBCentralManagerScanOptionAllowDuplicatesKey` was set to `true`, which intentionally emits a discovery callback for every advertisement packet.
