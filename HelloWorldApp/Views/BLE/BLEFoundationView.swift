@@ -486,6 +486,17 @@ private struct BLEScooterControlView: View {
             }
             .padding(.bottom, 8)
 
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("NFC Read Validation", value: viewModel.nfcReadStatus.rawValue)
+                LabeledContent("Current NFC Status", value: viewModel.isNfcEnabled == nil ? "Unknown" : (viewModel.isNfcEnabled == true ? "Enabled" : "Disabled"))
+                Button("Read NFC Status") {
+                    viewModel.readNfcStatus()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -551,6 +562,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Brake Read", value: viewModel.brakeResponseReadStatus.rawValue)
             LabeledContent("Core Controls - Throttle Write", value: viewModel.throttleResponseWriteStatus.rawValue)
             LabeledContent("Core Controls - Brake Write", value: viewModel.brakeResponseWriteStatus.rawValue)
+            LabeledContent("Core Controls - NFC Read", value: viewModel.nfcReadStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)
