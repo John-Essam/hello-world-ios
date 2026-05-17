@@ -302,6 +302,7 @@ private struct BLEScooterControlView: View {
                         telemetryFaultFlagsCard
                         telemetryOperationalFlagsCard
                         telemetryControllerTempCard
+                        telemetryBatteryTempCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -617,6 +618,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Fault Flags", value: viewModel.telemetryFaultFlagsStatus.rawValue)
             LabeledContent("Telemetry - Operational Flags", value: viewModel.telemetryOperationalFlagsStatus.rawValue)
             LabeledContent("Telemetry - Controller Temp", value: viewModel.telemetryControllerTempStatus.rawValue)
+            LabeledContent("Telemetry - Battery Temp", value: viewModel.telemetryBatteryTempStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -752,6 +754,23 @@ private struct BLEScooterControlView: View {
             .disabled(!viewModel.isCommandChannelReady)
 
             Text("Official SDK API: `TCB0ACommand.readTemp()`")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryBatteryTempCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Battery Temperature")
+                .font(.headline)
+
+            Text("Not available in official iOS SDK")
+                .font(.subheadline.weight(.semibold))
+            LabeledContent("Validation", value: viewModel.telemetryBatteryTempStatus.rawValue)
+            LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+            Text("No documented helper equivalent to `readTemp(.battery)` exists in current iOS SDK source.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

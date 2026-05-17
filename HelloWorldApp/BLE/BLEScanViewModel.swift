@@ -33,6 +33,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryFaultFlagsStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryOperationalFlagsStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryControllerTempStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryBatteryTempStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -1333,6 +1334,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryFaultFlagsStatus = .notTested
             telemetryOperationalFlagsStatus = .notTested
             telemetryControllerTempStatus = .notTested
+            telemetryBatteryTempStatus = .failed
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1363,6 +1365,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isControllerTempPending = false
             controllerTempRequestedAt = nil
             pendingSdkAuditsByFunction.removeAll()
+            appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1430,6 +1433,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             activeFaultFlags = []
             telemetryOperationalFlagsStatus = .notTested
             telemetryControllerTempStatus = .notTested
+            telemetryBatteryTempStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1505,6 +1509,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             activeFaultFlags = []
             telemetryOperationalFlagsStatus = .notTested
             telemetryControllerTempStatus = .notTested
+            telemetryBatteryTempStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
