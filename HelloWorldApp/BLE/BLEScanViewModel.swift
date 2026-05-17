@@ -31,6 +31,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryBatteryVoltageStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryRealTimeSpeedStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryFaultFlagsStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryOperationalFlagsStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -57,6 +58,13 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var batteryVoltageRaw: Int?
     @Published private(set) var realTimeSpeed: Int?
     @Published private(set) var activeFaultFlags: [String] = []
+    @Published private(set) var operationalLockStatus: Bool?
+    @Published private(set) var operationalFrontLightStatus: Bool?
+    @Published private(set) var operationalCruiseStatus: Bool?
+    @Published private(set) var operationalChargingStatus: Bool?
+    @Published private(set) var operationalNfcStatus: Bool?
+    @Published private(set) var operationalPushAssistStatus: Bool?
+    @Published private(set) var operationalMotorRunningStatus: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -1276,6 +1284,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryVoltageStatus = .notTested
             telemetryRealTimeSpeedStatus = .notTested
             telemetryFaultFlagsStatus = .notTested
+            telemetryOperationalFlagsStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1295,6 +1304,13 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             batteryVoltageRaw = nil
             realTimeSpeed = nil
             activeFaultFlags = []
+            operationalLockStatus = nil
+            operationalFrontLightStatus = nil
+            operationalCruiseStatus = nil
+            operationalChargingStatus = nil
+            operationalNfcStatus = nil
+            operationalPushAssistStatus = nil
+            operationalMotorRunningStatus = nil
             pendingSdkAuditsByFunction.removeAll()
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
@@ -1359,6 +1375,14 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             realTimeSpeed = nil
             telemetryFaultFlagsStatus = .notTested
             activeFaultFlags = []
+            telemetryOperationalFlagsStatus = .notTested
+            operationalLockStatus = nil
+            operationalFrontLightStatus = nil
+            operationalCruiseStatus = nil
+            operationalChargingStatus = nil
+            operationalNfcStatus = nil
+            operationalPushAssistStatus = nil
+            operationalMotorRunningStatus = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1422,6 +1446,14 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             realTimeSpeed = nil
             telemetryFaultFlagsStatus = .notTested
             activeFaultFlags = []
+            telemetryOperationalFlagsStatus = .notTested
+            operationalLockStatus = nil
+            operationalFrontLightStatus = nil
+            operationalCruiseStatus = nil
+            operationalChargingStatus = nil
+            operationalNfcStatus = nil
+            operationalPushAssistStatus = nil
+            operationalMotorRunningStatus = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1632,6 +1664,13 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 telemetryRealTimeSpeedStatus = .passed
                 activeFaultFlags = decodeFaultFlags(from: heartbeatModel)
                 telemetryFaultFlagsStatus = .passed
+                operationalLockStatus = heartbeatModel.lockStatus
+                operationalFrontLightStatus = heartbeatModel.headlight
+                operationalCruiseStatus = heartbeatModel.cruiseControlFunction
+                operationalChargingStatus = heartbeatModel.chargingStatus
+                operationalPushAssistStatus = heartbeatModel.pushMode
+                operationalMotorRunningStatus = heartbeatModel.motorRunningStatus
+                telemetryOperationalFlagsStatus = .passed
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -1838,6 +1877,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 }
             } else if let nfcModel = model as? TCB03Model {
                 isNfcEnabled = nfcModel.nfcStatus
+                operationalNfcStatus = nfcModel.nfcStatus
                 appendLog(.sdkParse, "SDK parsed TCB03Model: nfcStatus=\(nfcModel.nfcStatus)")
                 if isNfcReadPending {
                     let latencyMs = nfcReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1

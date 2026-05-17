@@ -300,6 +300,7 @@ private struct BLEScooterControlView: View {
                         telemetryVoltageCard
                         telemetrySpeedCard
                         telemetryFaultFlagsCard
+                        telemetryOperationalFlagsCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -613,6 +614,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Battery Voltage", value: viewModel.telemetryBatteryVoltageStatus.rawValue)
             LabeledContent("Telemetry - Real-Time Speed", value: viewModel.telemetryRealTimeSpeedStatus.rawValue)
             LabeledContent("Telemetry - Fault Flags", value: viewModel.telemetryFaultFlagsStatus.rawValue)
+            LabeledContent("Telemetry - Operational Flags", value: viewModel.telemetryOperationalFlagsStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -691,6 +693,46 @@ private struct BLEScooterControlView: View {
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryOperationalFlagsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Operational Status Flags")
+                .font(.headline)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                statusChip("Lock", value: viewModel.operationalLockStatus)
+                statusChip("Front Light", value: viewModel.operationalFrontLightStatus)
+                statusChip("Cruise", value: viewModel.operationalCruiseStatus)
+                statusChip("Charging", value: viewModel.operationalChargingStatus)
+                statusChip("NFC", value: viewModel.operationalNfcStatus)
+                statusChip("Push Assist", value: viewModel.operationalPushAssistStatus)
+                statusChip("Motor Running", value: viewModel.operationalMotorRunningStatus)
+            }
+
+            LabeledContent("Validation", value: viewModel.telemetryOperationalFlagsStatus.rawValue)
+            Text("Heartbeat source: lock/light/cruise/charging/push/motor (`TCB01Model`); NFC is sourced from `TCB03Model` when available.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func statusChip(_ label: String, value: Bool?) -> some View {
+        let text = value == nil ? "Unknown" : (value == true ? "ON" : "OFF")
+        let tint: Color = value == nil ? .secondary : (value == true ? .green : .orange)
+        return HStack {
+            Text(label)
+                .font(.caption.weight(.semibold))
+            Spacer()
+            Text(text)
+                .font(.caption2.weight(.bold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .foregroundStyle(tint)
     }
 
     private var telemetryVoltageCard: some View {
