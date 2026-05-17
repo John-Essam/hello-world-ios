@@ -16,6 +16,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var unlockStatus: ValidationStatus = .notTested
     @Published private(set) var cruiseControlStatus: ValidationStatus = .notTested
     @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
+    @Published private(set) var gearMaxSpeedReadStatus: ValidationStatus = .notTested
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
@@ -48,6 +49,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lastKnownLockStatus: Bool?
     @Published private(set) var lastKnownCruiseControlEnabled: Bool?
     @Published private(set) var currentGearSelection: Int?
+    @Published private(set) var gear1MaxSpeed: Int?
+    @Published private(set) var gear2MaxSpeed: Int?
+    @Published private(set) var gear3MaxSpeed: Int?
     @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var isMetricUnitEnabled: Bool?
     @Published private(set) var throttleResponseValue: Int?
@@ -100,6 +104,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingCruiseExpectedEnabled: Bool?
     private var gearCommandStartedAt: Date?
     private var pendingGearExpected: Int?
+    private var gearMaxSpeedReadRequestedAt: Date?
+    private var pendingGearMaxSpeedReadExpectedGear: Int?
     private var startModeCommandStartedAt: Date?
     private var pendingZeroStartExpected: Bool?
     private var unitSystemCommandStartedAt: Date?
@@ -411,6 +417,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             gearSelectionStatus = .failed
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+        }
+    }
+
+    func readGearMaxSpeed(gear: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "GEAR MAX READ blocked: command channel not ready")
+            gearMaxSpeedReadStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "GEAR MAX READ failed: write characteristic not ready")
+            gearMaxSpeedReadStatus = .failed
+            return
+        }
+        guard (1...3).contains(gear) else {
+            appendLog(.error, "GEAR MAX READ rejected: gear must be 1...3, received=\(gear)")
+            gearMaxSpeedReadStatus = .failed
+            return
+        }
+        do {
+            gearMaxSpeedReadRequestedAt = Date()
+            pendingGearMaxSpeedReadExpectedGear = gear
+            let payload = try TCB05Command.readGearMaxSpeed(gear: gear)
+            appendLog(.tx, "TX SDK TCB05Command.readGearMaxSpeed(gear:\(gear)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleGearMaxSpeedReadDiagnostics(expectedGear: gear)
+        } catch {
+            appendLog(.error, "GEAR MAX READ sdk error: \(error)")
+            gearMaxSpeedReadStatus = .failed
+            pendingGearMaxSpeedReadExpectedGear = nil
+            gearMaxSpeedReadRequestedAt = nil
         }
     }
 
@@ -970,6 +1007,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleGearMaxSpeedReadDiagnostics(expectedGear: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingGearMaxSpeedReadExpectedGear == expectedGear else { return }
+            let elapsedMs = gearMaxSpeedReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "GEAR MAX READ diagnostics timeout: no TCB05 speed confirmation after \(elapsedMs)ms expectedGear=\(expectedGear)"
+            )
+            gearMaxSpeedReadStatus = .partial
+            pendingGearMaxSpeedReadExpectedGear = nil
+            gearMaxSpeedReadRequestedAt = nil
+        }
+    }
+
     private func scheduleStartModeDiagnostics(expectedZeroStart: Bool) {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))
@@ -1366,6 +1418,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unlockStatus = .notTested
             cruiseControlStatus = .notTested
             gearSelectionStatus = .notTested
+            gearMaxSpeedReadStatus = .notTested
             startModeStatus = .notTested
             unitSystemStatus = .notTested
             throttleResponseReadStatus = .notTested
@@ -1391,6 +1444,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
             currentGearSelection = nil
+            gear1MaxSpeed = nil
+            gear2MaxSpeed = nil
+            gear3MaxSpeed = nil
             isZeroStartModeEnabled = nil
             isMetricUnitEnabled = nil
             throttleResponseValue = nil
@@ -1419,6 +1475,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
             drivingCurrentRequestedAt = nil
+            pendingGearMaxSpeedReadExpectedGear = nil
+            gearMaxSpeedReadRequestedAt = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
@@ -1454,6 +1512,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             cruiseCommandStartedAt = nil
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+            pendingGearMaxSpeedReadExpectedGear = nil
+            gearMaxSpeedReadRequestedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1496,6 +1556,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
             telemetryBatteryVoltageDetailStatus = .notTested
+            gearMaxSpeedReadStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1505,6 +1566,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
             drivingCurrentA = nil
+            gear1MaxSpeed = nil
+            gear2MaxSpeed = nil
+            gear3MaxSpeed = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1536,6 +1600,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             cruiseCommandStartedAt = nil
             pendingGearExpected = nil
             gearCommandStartedAt = nil
+            pendingGearMaxSpeedReadExpectedGear = nil
+            gearMaxSpeedReadRequestedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1578,6 +1644,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
             telemetryBatteryVoltageDetailStatus = .notTested
+            gearMaxSpeedReadStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1587,6 +1654,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             operationalMotorRunningStatus = nil
             controllerTemperatureC = nil
             drivingCurrentA = nil
+            gear1MaxSpeed = nil
+            gear2MaxSpeed = nil
+            gear3MaxSpeed = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1893,6 +1963,16 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear
+                switch gearModel.gear {
+                case 1:
+                    gear1MaxSpeed = gearModel.speed
+                case 2:
+                    gear2MaxSpeed = gearModel.speed
+                case 3:
+                    gear3MaxSpeed = gearModel.speed
+                default:
+                    break
+                }
                 appendLog(.sdkParse, "SDK parsed TCB05Model: gear=\(gearModel.gear) speed=\(gearModel.speed)")
                 if let expectedGear = pendingGearExpected {
                     let latencyMs = gearCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
@@ -1906,6 +1986,24 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingGearExpected = nil
                     gearCommandStartedAt = nil
+                }
+                if let expectedGear = pendingGearMaxSpeedReadExpectedGear {
+                    let latencyMs = gearMaxSpeedReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "GEAR MAX READ callback: latencyMs=\(latencyMs) expectedGear=\(expectedGear) actualGear=\(gearModel.gear) speed=\(gearModel.speed)")
+                    if expectedGear == gearModel.gear {
+                        if gear1MaxSpeed != nil && gear2MaxSpeed != nil && gear3MaxSpeed != nil {
+                            gearMaxSpeedReadStatus = .passed
+                            appendLog(.sdkParse, "GEAR MAX READ result: PASSED (G1/G2/G3 all captured)")
+                        } else {
+                            gearMaxSpeedReadStatus = .partial
+                            appendLog(.sdkParse, "GEAR MAX READ partial: received gear \(gearModel.gear), waiting for remaining gears")
+                        }
+                    } else {
+                        gearMaxSpeedReadStatus = .partial
+                        appendLog(.error, "GEAR MAX READ mismatch expectedGear=\(expectedGear) actualGear=\(gearModel.gear)")
+                    }
+                    pendingGearMaxSpeedReadExpectedGear = nil
+                    gearMaxSpeedReadRequestedAt = nil
                 }
             } else if let responseModel = model as? TCB22Model {
                 appendLog(.sdkParse, "SDK parsed TCB22Model: type=\(String(describing: responseModel.responseType)) response=\(responseModel.response)")

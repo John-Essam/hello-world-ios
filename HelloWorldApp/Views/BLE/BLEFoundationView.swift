@@ -430,6 +430,36 @@ private struct BLEScooterControlView: View {
             .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Gear Max Speed Read", value: viewModel.gearMaxSpeedReadStatus.rawValue)
+                LabeledContent("Gear1 Max Speed", value: viewModel.gear1MaxSpeed.map(String.init) ?? "Unknown")
+                LabeledContent("Gear2 Max Speed", value: viewModel.gear2MaxSpeed.map(String.init) ?? "Unknown")
+                LabeledContent("Gear3 Max Speed", value: viewModel.gear3MaxSpeed.map(String.init) ?? "Unknown")
+                HStack {
+                    Button("Read G1") {
+                        viewModel.readGearMaxSpeed(gear: 1)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Read G2") {
+                        viewModel.readGearMaxSpeed(gear: 2)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Read G3") {
+                        viewModel.readGearMaxSpeed(gear: 3)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+                Text("Official SDK API: `TCB05Command.readGearMaxSpeed(gear:)`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
                 LabeledContent("Start Mode Validation", value: viewModel.startModeStatus.rawValue)
                 LabeledContent("Current Start Mode", value: startModeLabel(viewModel.isZeroStartModeEnabled))
                 Picker("Start Mode", selection: startModeBinding) {
@@ -603,6 +633,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Lock", value: viewModel.lockStatus.rawValue)
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
+            LabeledContent("Core Controls - Gear Max Speed Read", value: viewModel.gearMaxSpeedReadStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)
