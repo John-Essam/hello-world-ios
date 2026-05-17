@@ -297,6 +297,7 @@ private struct BLEScooterControlView: View {
                         validationStatusCard
                     case .telemetry:
                         telemetryBatteryCard
+                        telemetryVoltageCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -607,6 +608,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Lights - Ambient Power", value: viewModel.ambientLightStatus.rawValue)
             LabeledContent("Lights - Ambient RGB/Mode", value: viewModel.ambientLightStyleStatus.rawValue)
             LabeledContent("Telemetry - Battery Percentage", value: viewModel.telemetryBatteryPercentageStatus.rawValue)
+            LabeledContent("Telemetry - Battery Voltage", value: viewModel.telemetryBatteryVoltageStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -625,6 +627,23 @@ private struct BLEScooterControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryVoltageCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Battery Voltage")
+                .font(.headline)
+
+            let volts = viewModel.batteryVoltageRaw.map { Double($0) / 10.0 }
+            LabeledContent("Raw Value", value: viewModel.batteryVoltageRaw.map(String.init) ?? "--")
+            LabeledContent("Voltage", value: volts.map { String(format: "%.1f V", $0) } ?? "--")
+            LabeledContent("Validation", value: viewModel.telemetryBatteryVoltageStatus.rawValue)
+            Text("Source: TCB01 heartbeat stream (`TCB01Model.batteryVoltage`)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

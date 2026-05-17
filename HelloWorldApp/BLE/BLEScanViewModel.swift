@@ -28,6 +28,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var ambientLightStatus: ValidationStatus = .notTested
     @Published private(set) var ambientLightStyleStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryBatteryPercentageStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryBatteryVoltageStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -51,6 +52,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var ambientLightGreen: Int?
     @Published private(set) var ambientLightBlue: Int?
     @Published private(set) var batteryPercent: Int?
+    @Published private(set) var batteryVoltageRaw: Int?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -1267,6 +1269,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientLightStatus = .notTested
             ambientLightStyleStatus = .notTested
             telemetryBatteryPercentageStatus = .notTested
+            telemetryBatteryVoltageStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1283,6 +1286,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientLightGreen = nil
             ambientLightBlue = nil
             batteryPercent = nil
+            batteryVoltageRaw = nil
             pendingSdkAuditsByFunction.removeAll()
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
@@ -1341,6 +1345,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleWriteRequestedAt = nil
             telemetryBatteryPercentageStatus = .notTested
             batteryPercent = nil
+            telemetryBatteryVoltageStatus = .notTested
+            batteryVoltageRaw = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1398,6 +1404,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleWriteRequestedAt = nil
             telemetryBatteryPercentageStatus = .notTested
             batteryPercent = nil
+            telemetryBatteryVoltageStatus = .notTested
+            batteryVoltageRaw = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1601,7 +1609,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 isMetricUnitEnabled = !heartbeatModel.metricMileUnit
                 isFrontLightOn = heartbeatModel.headlight
                 batteryPercent = heartbeatModel.power
+                batteryVoltageRaw = heartbeatModel.batteryVoltage
                 telemetryBatteryPercentageStatus = .passed
+                telemetryBatteryVoltageStatus = .passed
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
