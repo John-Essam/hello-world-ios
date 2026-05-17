@@ -541,6 +541,20 @@ private struct BLEScooterControlView: View {
             .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Global Max Speed Read", value: viewModel.globalMaxSpeedReadStatus.rawValue)
+                LabeledContent("Global Max Speed", value: viewModel.globalMaxSpeed.map(String.init) ?? "Unknown")
+                Button("Read Global Max Speed") {
+                    viewModel.readGlobalMaxSpeed()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+                Text("Official SDK API: `TCB05Command.readMaxSpeed()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
                 LabeledContent("Start Mode Validation", value: viewModel.startModeStatus.rawValue)
                 LabeledContent("Current Start Mode", value: startModeLabel(viewModel.isZeroStartModeEnabled))
                 Picker("Start Mode", selection: startModeBinding) {
@@ -717,6 +731,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Gear Max Speed Read", value: viewModel.gearMaxSpeedReadStatus.rawValue)
             LabeledContent("Core Controls - Gear Max Speed Write", value: viewModel.gearMaxSpeedWriteStatus.rawValue)
             LabeledContent("Core Controls - Custom Gear Profiles", value: viewModel.customGearProfilesStatus.rawValue)
+            LabeledContent("Core Controls - Global Max Speed Read", value: viewModel.globalMaxSpeedReadStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)

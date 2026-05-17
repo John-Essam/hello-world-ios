@@ -19,6 +19,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var gearMaxSpeedReadStatus: ValidationStatus = .notTested
     @Published private(set) var gearMaxSpeedWriteStatus: ValidationStatus = .notTested
     @Published private(set) var customGearProfilesStatus: ValidationStatus = .notTested
+    @Published private(set) var globalMaxSpeedReadStatus: ValidationStatus = .notTested
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
@@ -67,6 +68,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var customProfileReadbackG1: Int?
     @Published private(set) var customProfileReadbackG2: Int?
     @Published private(set) var customProfileReadbackG3: Int?
+    @Published private(set) var globalMaxSpeed: Int?
     @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var isMetricUnitEnabled: Bool?
     @Published private(set) var throttleResponseValue: Int?
@@ -129,6 +131,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var customGearProfileReadbackByGear: [Int: Int] = [:]
     private var customGearProfileApplyTask: Task<Void, Never>?
     private var isCustomGearProfileReadbackPhase = false
+    private var globalMaxSpeedRequestedAt: Date?
+    private var isGlobalMaxSpeedReadPending = false
     private var startModeCommandStartedAt: Date?
     private var pendingZeroStartExpected: Bool?
     private var unitSystemCommandStartedAt: Date?
@@ -575,6 +579,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
                     try? await Task.sleep(for: .milliseconds(1500))
                 }
             }
+        }
+    }
+
+    func readGlobalMaxSpeed() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "GLOBAL MAX READ blocked: command channel not ready")
+            globalMaxSpeedReadStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "GLOBAL MAX READ failed: write characteristic not ready")
+            globalMaxSpeedReadStatus = .failed
+            return
+        }
+        do {
+            globalMaxSpeedRequestedAt = Date()
+            isGlobalMaxSpeedReadPending = true
+            let payload = try TCB05Command.readMaxSpeed()
+            appendLog(.tx, "TX SDK TCB05Command.readMaxSpeed() bytes=\(payload.hexString)")
+            send(payload)
+            scheduleGlobalMaxSpeedReadDiagnostics()
+        } catch {
+            appendLog(.error, "GLOBAL MAX READ sdk error: \(error)")
+            globalMaxSpeedReadStatus = .failed
+            isGlobalMaxSpeedReadPending = false
+            globalMaxSpeedRequestedAt = nil
         }
     }
 
@@ -1341,6 +1371,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleGlobalMaxSpeedReadDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isGlobalMaxSpeedReadPending else { return }
+            let elapsedMs = globalMaxSpeedRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "GLOBAL MAX READ diagnostics timeout: no TCB05MaxSpeed response after \(elapsedMs)ms")
+            globalMaxSpeedReadStatus = .partial
+            isGlobalMaxSpeedReadPending = false
+            globalMaxSpeedRequestedAt = nil
+        }
+    }
+
     var bluetoothStateLabel: String {
         switch bluetoothState {
         case .unknown: return "Unknown"
@@ -1565,6 +1607,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
+            globalMaxSpeedReadStatus = .notTested
             startModeStatus = .notTested
             unitSystemStatus = .notTested
             throttleResponseReadStatus = .notTested
@@ -1606,6 +1649,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             customProfileReadbackG1 = nil
             customProfileReadbackG2 = nil
             customProfileReadbackG3 = nil
+            globalMaxSpeed = nil
             isZeroStartModeEnabled = nil
             isMetricUnitEnabled = nil
             throttleResponseValue = nil
@@ -1644,6 +1688,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isCustomGearProfileReadbackPhase = false
             customGearProfileApplyTask?.cancel()
             customGearProfileApplyTask = nil
+            isGlobalMaxSpeedReadPending = false
+            globalMaxSpeedRequestedAt = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
@@ -1689,6 +1735,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isCustomGearProfileReadbackPhase = false
             customGearProfileApplyTask?.cancel()
             customGearProfileApplyTask = nil
+            isGlobalMaxSpeedReadPending = false
+            globalMaxSpeedRequestedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1734,6 +1782,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
+            globalMaxSpeedReadStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1759,6 +1808,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             customProfileReadbackG1 = nil
             customProfileReadbackG2 = nil
             customProfileReadbackG3 = nil
+            globalMaxSpeed = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -1800,6 +1850,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isCustomGearProfileReadbackPhase = false
             customGearProfileApplyTask?.cancel()
             customGearProfileApplyTask = nil
+            isGlobalMaxSpeedReadPending = false
+            globalMaxSpeedRequestedAt = nil
             pendingZeroStartExpected = nil
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
@@ -1845,6 +1897,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
+            globalMaxSpeedReadStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1870,6 +1923,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             customProfileReadbackG1 = nil
             customProfileReadbackG2 = nil
             customProfileReadbackG3 = nil
+            globalMaxSpeed = nil
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
@@ -2255,6 +2309,16 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         customGearProfileReadbackByGear = [:]
                         isCustomGearProfileReadbackPhase = false
                     }
+                }
+            } else if let globalMaxModel = model as? TCB05MaxSpeedModel {
+                globalMaxSpeed = globalMaxModel.maxSpeed
+                appendLog(.sdkParse, "SDK parsed TCB05MaxSpeedModel: maxSpeed=\(globalMaxModel.maxSpeed)")
+                if isGlobalMaxSpeedReadPending {
+                    let latencyMs = globalMaxSpeedRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "GLOBAL MAX READ callback: latencyMs=\(latencyMs) maxSpeed=\(globalMaxModel.maxSpeed)")
+                    globalMaxSpeedReadStatus = .passed
+                    isGlobalMaxSpeedReadPending = false
+                    globalMaxSpeedRequestedAt = nil
                 }
             } else if let responseModel = model as? TCB22Model {
                 appendLog(.sdkParse, "SDK parsed TCB22Model: type=\(String(describing: responseModel.responseType)) response=\(responseModel.response)")
