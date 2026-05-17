@@ -766,6 +766,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Mileage & Trip - Avg/Max Speed", value: viewModel.mileageSpeedStatsStatus.rawValue)
             LabeledContent("Mileage & Trip - Riding Time", value: viewModel.mileageRidingTimeStatus.rawValue)
             LabeledContent("Diagnostics - Serial Number", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
+            LabeledContent("Diagnostics - Detailed Device Info", value: viewModel.diagnosticsDetailedDeviceInfoStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -782,6 +783,21 @@ private struct BLEScooterControlView: View {
                 LabeledContent("Validation", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
                 LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
                 Text("No official iOS SDK command helper/model parser is exposed for cmd1D serial number.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Placeholder only: manual frame path is intentionally not used.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Detailed Device Info (0x001E)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.diagnosticsDetailedDeviceInfoStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for cmd1E device info payload.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Placeholder only: manual frame path is intentionally not used.")
