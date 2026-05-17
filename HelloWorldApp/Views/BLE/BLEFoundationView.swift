@@ -768,6 +768,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Diagnostics - Serial Number", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
             LabeledContent("Diagnostics - Detailed Device Info", value: viewModel.diagnosticsDetailedDeviceInfoStatus.rawValue)
             LabeledContent("Diagnostics - Meter Version", value: viewModel.diagnosticsMeterVersionStatus.rawValue)
+            LabeledContent("Diagnostics - Controller Version", value: viewModel.diagnosticsControllerVersionStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -822,6 +823,25 @@ private struct BLEScooterControlView: View {
                 .buttonStyle(.bordered)
                 .disabled(!viewModel.isCommandChannelReady)
                 Text("Official SDK API: `TCB11Command.readMeterVersion()`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Controller Version (0x0011)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.diagnosticsControllerVersionStatus.rawValue)
+                LabeledContent("Manufacturer", value: viewModel.controllerManufacturerCode ?? "--")
+                LabeledContent("Hardware", value: viewModel.controllerHardwareVersion ?? "--")
+                LabeledContent("Software", value: viewModel.controllerSoftwareVersion ?? "--")
+                Button("Read Controller Version") {
+                    viewModel.readControllerVersion()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+                Text("Official SDK API: `TCB11Command.readControllerVersion()`")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

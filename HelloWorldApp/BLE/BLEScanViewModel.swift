@@ -49,6 +49,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var diagnosticsSerialNumberStatus: ValidationStatus = .failed
     @Published private(set) var diagnosticsDetailedDeviceInfoStatus: ValidationStatus = .failed
     @Published private(set) var diagnosticsMeterVersionStatus: ValidationStatus = .notTested
+    @Published private(set) var diagnosticsControllerVersionStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -108,6 +109,9 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var meterHardwareVersion: String?
     @Published private(set) var meterSoftwareVersion: String?
     @Published private(set) var meterID: String?
+    @Published private(set) var controllerManufacturerCode: String?
+    @Published private(set) var controllerHardwareVersion: String?
+    @Published private(set) var controllerSoftwareVersion: String?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -184,6 +188,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isTotalOdoMileagePending = false
     private var meterVersionRequestedAt: Date?
     private var isMeterVersionPending = false
+    private var controllerVersionRequestedAt: Date?
+    private var isControllerVersionPending = false
     private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
 
     private let serviceUUIDs: [CBUUID] = [
@@ -1183,6 +1189,37 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readControllerVersion() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "CONTROLLER VERSION blocked: command channel not ready")
+            diagnosticsControllerVersionStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "CONTROLLER VERSION failed: write characteristic not ready")
+            diagnosticsControllerVersionStatus = .failed
+            return
+        }
+        do {
+            controllerVersionRequestedAt = Date()
+            isControllerVersionPending = true
+            let payload = try TCB11Command.readControllerVersion()
+            appendLog(.tx, "TX SDK TCB11Command.readControllerVersion() bytes=\(payload.hexString)")
+            sendAudited(
+                payload,
+                commandName: "TCB11Command.readControllerVersion()",
+                featureName: "Diagnostics / Controller Version",
+                expectedModel: "TCB11ControllerModel"
+            )
+            scheduleControllerVersionDiagnostics()
+        } catch {
+            appendLog(.error, "CONTROLLER VERSION sdk error: \(error)")
+            diagnosticsControllerVersionStatus = .failed
+            isControllerVersionPending = false
+            controllerVersionRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -1569,6 +1606,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    private func scheduleControllerVersionDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isControllerVersionPending else { return }
+            let elapsedMs = controllerVersionRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "CONTROLLER VERSION diagnostics timeout: no TCB11 controller response after \(elapsedMs)ms")
+            diagnosticsControllerVersionStatus = .partial
+            isControllerVersionPending = false
+            controllerVersionRequestedAt = nil
+        }
+    }
+
     private func scheduleGlobalMaxSpeedReadDiagnostics() {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))
@@ -1835,6 +1884,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             diagnosticsSerialNumberStatus = .failed
             diagnosticsDetailedDeviceInfoStatus = .failed
             diagnosticsMeterVersionStatus = .notTested
+            diagnosticsControllerVersionStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1887,6 +1937,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             meterHardwareVersion = nil
             meterSoftwareVersion = nil
             meterID = nil
+            controllerManufacturerCode = nil
+            controllerHardwareVersion = nil
+            controllerSoftwareVersion = nil
             isControllerTempPending = false
             controllerTempRequestedAt = nil
             isDrivingCurrentPending = false
@@ -1899,6 +1952,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             totalOdoMileageRequestedAt = nil
             isMeterVersionPending = false
             meterVersionRequestedAt = nil
+            isControllerVersionPending = false
+            controllerVersionRequestedAt = nil
             pendingGearMaxSpeedReadExpectedGear = nil
             gearMaxSpeedReadRequestedAt = nil
             pendingGearMaxSpeedWriteExpectedGear = nil
@@ -2018,6 +2073,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             diagnosticsSerialNumberStatus = .notTested
             diagnosticsDetailedDeviceInfoStatus = .notTested
             diagnosticsMeterVersionStatus = .notTested
+            diagnosticsControllerVersionStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -2038,8 +2094,13 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             meterHardwareVersion = nil
             meterSoftwareVersion = nil
             meterID = nil
+            controllerManufacturerCode = nil
+            controllerHardwareVersion = nil
+            controllerSoftwareVersion = nil
             isMeterVersionPending = false
             meterVersionRequestedAt = nil
+            isControllerVersionPending = false
+            controllerVersionRequestedAt = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -2150,6 +2211,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             diagnosticsSerialNumberStatus = .notTested
             diagnosticsDetailedDeviceInfoStatus = .notTested
             diagnosticsMeterVersionStatus = .notTested
+            diagnosticsControllerVersionStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -2170,8 +2232,13 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             meterHardwareVersion = nil
             meterSoftwareVersion = nil
             meterID = nil
+            controllerManufacturerCode = nil
+            controllerHardwareVersion = nil
+            controllerSoftwareVersion = nil
             isMeterVersionPending = false
             meterVersionRequestedAt = nil
+            isControllerVersionPending = false
+            controllerVersionRequestedAt = nil
             gear1MaxSpeed = nil
             gear2MaxSpeed = nil
             gear3MaxSpeed = nil
@@ -2545,6 +2612,25 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.sdkParse, "METER VERSION result: PASSED")
                     isMeterVersionPending = false
                     meterVersionRequestedAt = nil
+                }
+            } else if let controllerModel = model as? TCB11ControllerModel {
+                controllerManufacturerCode = controllerModel.manufacturerCode
+                controllerHardwareVersion = controllerModel.hardwareVersion
+                controllerSoftwareVersion = controllerModel.binVersion
+                appendLog(
+                    .sdkParse,
+                    "SDK parsed TCB11ControllerModel: manufacturer=\(controllerModel.manufacturerCode) hardware=\(controllerModel.hardwareVersion) software=\(controllerModel.binVersion)"
+                )
+                if isControllerVersionPending {
+                    let latencyMs = controllerVersionRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(
+                        .sdkParse,
+                        "CONTROLLER VERSION callback: latencyMs=\(latencyMs) manufacturer=\(controllerModel.manufacturerCode) hardware=\(controllerModel.hardwareVersion) software=\(controllerModel.binVersion)"
+                    )
+                    diagnosticsControllerVersionStatus = .passed
+                    appendLog(.sdkParse, "CONTROLLER VERSION result: PASSED")
+                    isControllerVersionPending = false
+                    controllerVersionRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear
