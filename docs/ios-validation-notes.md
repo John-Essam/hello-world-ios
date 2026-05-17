@@ -64,6 +64,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Single-Trip Mileage | `TCB08Command.readSingleTripMileage()` + `TCB08Model.singleTripMileage` | NOT_TESTED | - | UI now persists latest successful trip read and logs TX/RX/model conversion + callback timing for evidence collection. |
 | Total Mileage / ODO | `TCB09Command.readTotalTripMileage()` + `TCB09Model.totalMileage` | NOT_TESTED | - | ODO card + command flow implemented with TX/RX/SDK-parse/timing diagnostics using official iOS SDK only. |
 | Speed Stats (avg / max) | No official iOS SDK command helper/model parser for `cmd32` | FAILED | IOS_SDK_GAP | iOS SDK exposes function code metadata only; no documented command API or parser model path is available in SDK source. |
+| Riding Time | No official iOS SDK command helper/model parser for `cmd31` | FAILED | IOS_SDK_GAP | iOS SDK exposes function code metadata only; no documented command API or parser model path is available in SDK source. |
 
 ## Investigation Notes (2026-05-14)
 

@@ -1068,6 +1068,21 @@ private struct BLEScooterControlView: View {
             }
             .padding(12)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Riding Time")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.mileageRidingTimeStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for cmd31 riding time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Placeholder only: manual frame path is intentionally not used.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
