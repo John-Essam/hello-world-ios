@@ -37,6 +37,21 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Ambient Light ON/OFF | `TCB04Command.writeAmbientLightStatus(_:)` + parsed `TCB04Model.ambientLightStatus` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; TCB04 callback confirmation wired for validation |
 | Ambient Light RGB / Modes | `TCB1ACommand.readAmbientLight()` + `TCB1ACommand.writeAmbientLight(type:R:G:B)` + parsed `TCB1AModel` | FAILED | IOS_SDK_BUG | SDK source audit + runtime frame audit show `cmd1A` write frames are generated with declared payload length `0` while write API appends 5 bytes. Issues: [#3](https://github.com/John-Essam/hello-world-ios/issues/3), [#4](https://github.com/John-Essam/hello-world-ios/issues/4), [#5](https://github.com/John-Essam/hello-world-ios/issues/5), [#6](https://github.com/John-Essam/hello-world-ios/issues/6) |
 
+## Telemetry
+
+| Feature | Official iOS API / Flow | Status | Classification | Evidence |
+|---|---|---|---|---|
+| Battery Percentage | `TCB01Model.power` from heartbeat notify stream | NOT_TESTED | - | Dedicated Telemetry card with live updates from parsed `TCB01Model`; validation state and logs wired. |
+| Battery Voltage | `TCB01Model.batteryVoltage` from heartbeat notify stream | NOT_TESTED | - | Dedicated Telemetry card shows raw + converted volts from heartbeat parse; validation state wired. |
+| Real-Time Speed | `TCB01Model.realTimeSpeed` from heartbeat notify stream | NOT_TESTED | - | Dedicated live speed widget with heartbeat-driven updates and validation state. |
+| Fault Flags | `TCB01Model` fault bitfields | NOT_TESTED | - | Fault labels decoded from official SDK model fields and rendered with “No faults” fallback. |
+| Operational Status Flags | `TCB01Model` status bitfields (+ `TCB03Model` for NFC when available) | NOT_TESTED | - | Live status chips for lock/front light/cruise/charging/push/motor; NFC sourced from official `TCB03Model` callback when present. |
+| Controller Temperature | `TCB0ACommand.readTemp()` + `TCB0AModel` parse (`type == 0`) | NOT_TESTED | - | TX/RX/parse/timing diagnostics implemented with explicit pass/partial/fail behavior. |
+| Battery Temperature | No documented battery-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | Current iOS SDK source exposes `TCB0ACommand.readTemp()` only; no official `readTemp(.battery)` helper path. |
+| Motor Temperature | No documented motor-target `TCB0A` helper in iOS SDK | FAILED | IOS_SDK_GAP | Current iOS SDK source exposes `TCB0ACommand.readTemp()` only; no official `readTemp(.motor)` helper path. |
+| Driving Current | `TCB0BCommand.readDrivingCurrent()` + `TCB0BModel` parse | NOT_TESTED | - | TX/RX/parse/timing diagnostics and dedicated telemetry UI card implemented. |
+| Battery Voltage Detail | No official iOS `TCB0C` command helper/model flow exposed | FAILED | IOS_SDK_GAP | SDK has `cmd0C` enum metadata but no command helper/model parser to execute this feature via official iOS SDK flow. |
+
 ## Investigation Notes (2026-05-14)
 
 - Repeated scan callbacks were caused by app configuration: `CBCentralManagerScanOptionAllowDuplicatesKey` was set to `true`, which intentionally emits a discovery callback for every advertisement packet.
