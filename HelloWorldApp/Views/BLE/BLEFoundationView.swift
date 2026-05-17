@@ -436,6 +436,17 @@ private struct BLEScooterControlView: View {
             }
             .padding(.bottom, 8)
 
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Throttle Response Read", value: viewModel.throttleResponseReadStatus.rawValue)
+                LabeledContent("Throttle Response Value", value: viewModel.throttleResponseValue.map(String.init) ?? "Unknown")
+                Button("Read Throttle Response") {
+                    viewModel.readThrottleResponse()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -487,6 +498,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
+            LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)

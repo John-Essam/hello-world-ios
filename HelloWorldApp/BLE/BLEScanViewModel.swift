@@ -18,6 +18,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
+    @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -31,6 +32,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var currentGearSelection: Int?
     @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var isMetricUnitEnabled: Bool?
+    @Published private(set) var throttleResponseValue: Int?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -63,6 +65,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingZeroStartExpected: Bool?
     private var unitSystemCommandStartedAt: Date?
     private var pendingMetricUnitExpected: Bool?
+    private var throttleReadRequestedAt: Date?
+    private var isThrottleReadPending = false
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -390,6 +394,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readThrottleResponse() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "THROTTLE READ blocked: command channel not ready")
+            throttleResponseReadStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "THROTTLE READ failed: write characteristic not ready")
+            throttleResponseReadStatus = .failed
+            return
+        }
+        do {
+            throttleReadRequestedAt = Date()
+            isThrottleReadPending = true
+            let payload = try TCB22Command.readResponseTime(type: 0)
+            appendLog(.tx, "TX SDK TCB22Command.readResponseTime(type:0) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleThrottleReadDiagnostics()
+        } catch {
+            appendLog(.error, "THROTTLE READ sdk error: \(error)")
+            throttleResponseReadStatus = .failed
+            isThrottleReadPending = false
+            throttleReadRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -521,6 +551,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             unitSystemStatus = .partial
             pendingMetricUnitExpected = nil
             unitSystemCommandStartedAt = nil
+        }
+    }
+
+    private func scheduleThrottleReadDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isThrottleReadPending else { return }
+            let elapsedMs = throttleReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "THROTTLE READ diagnostics timeout: no TCB22 throttle response after \(elapsedMs)ms")
+            throttleResponseReadStatus = .partial
+            isThrottleReadPending = false
+            throttleReadRequestedAt = nil
         }
     }
 
@@ -747,12 +789,14 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             gearSelectionStatus = .notTested
             startModeStatus = .notTested
             unitSystemStatus = .notTested
+            throttleResponseReadStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
             currentGearSelection = nil
             isZeroStartModeEnabled = nil
             isMetricUnitEnabled = nil
+            throttleResponseValue = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -788,6 +832,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
             unitSystemCommandStartedAt = nil
+            isThrottleReadPending = false
+            throttleReadRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -822,6 +868,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             startModeCommandStartedAt = nil
             pendingMetricUnitExpected = nil
             unitSystemCommandStartedAt = nil
+            isThrottleReadPending = false
+            throttleReadRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1081,6 +1129,19 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingGearExpected = nil
                     gearCommandStartedAt = nil
+                }
+            } else if let responseModel = model as? TCB22Model {
+                appendLog(.sdkParse, "SDK parsed TCB22Model: type=\(String(describing: responseModel.responseType)) response=\(responseModel.response)")
+                if responseModel.responseType == .throttle {
+                    throttleResponseValue = responseModel.response
+                    if isThrottleReadPending {
+                        let latencyMs = throttleReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                        appendLog(.sdkParse, "THROTTLE READ callback: latencyMs=\(latencyMs) value=\(responseModel.response)")
+                        throttleResponseReadStatus = .passed
+                        appendLog(.sdkParse, "THROTTLE READ result: PASSED")
+                        isThrottleReadPending = false
+                        throttleReadRequestedAt = nil
+                    }
                 }
             } else if pendingTcb02Action == .bind {
                 appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")
