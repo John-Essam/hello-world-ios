@@ -269,6 +269,7 @@ private struct BLEScooterControlView: View {
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
+        case telemetry = "Telemetry"
         case coreControls = "Core Controls"
         case lights = "Lights"
         case logs = "Logs"
@@ -294,6 +295,8 @@ private struct BLEScooterControlView: View {
                         connectedScooterCard
                         heartbeatCard
                         validationStatusCard
+                    case .telemetry:
+                        telemetryBatteryCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -603,6 +606,25 @@ private struct BLEScooterControlView: View {
             LabeledContent("Lights - Front Light", value: viewModel.frontLightStatus.rawValue)
             LabeledContent("Lights - Ambient Power", value: viewModel.ambientLightStatus.rawValue)
             LabeledContent("Lights - Ambient RGB/Mode", value: viewModel.ambientLightStyleStatus.rawValue)
+            LabeledContent("Telemetry - Battery Percentage", value: viewModel.telemetryBatteryPercentageStatus.rawValue)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryBatteryCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Telemetry")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Battery Percentage", value: viewModel.batteryPercent.map { "\($0)%" } ?? "--")
+                LabeledContent("Heartbeat Frames", value: "\(viewModel.heartbeatCount)")
+                LabeledContent("Validation", value: viewModel.telemetryBatteryPercentageStatus.rawValue)
+                Text("Source: TCB01 heartbeat stream (`TCB01Model.power`)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
