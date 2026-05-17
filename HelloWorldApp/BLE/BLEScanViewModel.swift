@@ -23,6 +23,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var throttleResponseWriteStatus: ValidationStatus = .notTested
     @Published private(set) var brakeResponseWriteStatus: ValidationStatus = .notTested
     @Published private(set) var nfcReadStatus: ValidationStatus = .notTested
+    @Published private(set) var nfcWriteStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -81,6 +82,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingBrakeWriteExpected: Int?
     private var nfcReadRequestedAt: Date?
     private var isNfcReadPending = false
+    private var nfcWriteRequestedAt: Date?
+    private var pendingNfcWriteExpected: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -548,6 +551,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setNfcStatus(enabled: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "NFC WRITE blocked: command channel not ready")
+            nfcWriteStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "NFC WRITE failed: write characteristic not ready")
+            nfcWriteStatus = .failed
+            return
+        }
+        do {
+            nfcWriteRequestedAt = Date()
+            pendingNfcWriteExpected = enabled
+            let payload = try TCB03Command.writeNfcStatus(enabled)
+            appendLog(.tx, "TX SDK TCB03Command.writeNfcStatus(\(enabled)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleNfcWriteDiagnostics(expectedStatus: enabled)
+        } catch {
+            appendLog(.error, "NFC WRITE sdk error: \(error)")
+            nfcWriteStatus = .failed
+            pendingNfcWriteExpected = nil
+            nfcWriteRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -739,6 +768,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             nfcReadStatus = .partial
             isNfcReadPending = false
             nfcReadRequestedAt = nil
+        }
+    }
+
+    private func scheduleNfcWriteDiagnostics(expectedStatus: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingNfcWriteExpected == expectedStatus else { return }
+            let elapsedMs = nfcWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "NFC WRITE diagnostics timeout: no TCB03 confirmation after \(elapsedMs)ms")
+            nfcWriteStatus = .partial
+            pendingNfcWriteExpected = nil
+            nfcWriteRequestedAt = nil
         }
     }
 
@@ -970,6 +1011,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             throttleResponseWriteStatus = .notTested
             brakeResponseWriteStatus = .notTested
             nfcReadStatus = .notTested
+            nfcWriteStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1024,6 +1066,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             brakeWriteRequestedAt = nil
             isNfcReadPending = false
             nfcReadRequestedAt = nil
+            pendingNfcWriteExpected = nil
+            nfcWriteRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1068,6 +1112,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             brakeWriteRequestedAt = nil
             isNfcReadPending = false
             nfcReadRequestedAt = nil
+            pendingNfcWriteExpected = nil
+            nfcWriteRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1387,6 +1433,19 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.sdkParse, "NFC READ result: PASSED")
                     isNfcReadPending = false
                     nfcReadRequestedAt = nil
+                }
+                if let expectedStatus = pendingNfcWriteExpected {
+                    let latencyMs = nfcWriteRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "NFC WRITE callback: latencyMs=\(latencyMs) expected=\(expectedStatus) actual=\(nfcModel.nfcStatus)")
+                    if expectedStatus == nfcModel.nfcStatus {
+                        nfcWriteStatus = .passed
+                        appendLog(.sdkParse, "NFC WRITE result: PASSED")
+                    } else {
+                        nfcWriteStatus = .partial
+                        appendLog(.error, "NFC WRITE mismatch expected=\(expectedStatus) actual=\(nfcModel.nfcStatus)")
+                    }
+                    pendingNfcWriteExpected = nil
+                    nfcWriteRequestedAt = nil
                 }
             } else if pendingTcb02Action == .bind {
                 appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")

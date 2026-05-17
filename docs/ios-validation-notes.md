@@ -26,6 +26,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Brake Response Read | `TCB22Command.readResponseTime(type:)` with `type=1` | NOT_TESTED | - | Read button + value display with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
 | Throttle / Brake Response Write | `TCB22Command.writeResponseTime(type:time:)` with `type=0` / `type=1` | NOT_TESTED | - | Slider-based 0-10 write controls for throttle/brake with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | NFC Status Read | `TCB03Command.readNfcStatus()` + parsed `TCB03Model.nfcStatus` | NOT_TESTED | - | Read action + current status indicator with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
+| NFC Enable / Disable | `TCB03Command.writeNfcStatus(_:)` + parsed `TCB03Model.nfcStatus` | NOT_TESTED | - | Enable/Disable actions with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
 
 ## Investigation Notes (2026-05-14)
