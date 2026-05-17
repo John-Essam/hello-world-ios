@@ -258,6 +258,7 @@ private struct BLEScanScreen: View {
 private struct BLEScooterControlView: View {
     @ObservedObject var viewModel: BLEFoundationViewModel
     @State private var selectedSection: Section = .foundation
+    @State private var selectedGear = 0
 
     private enum Section: String, CaseIterable, Identifiable {
         case foundation = "Foundation"
@@ -395,6 +396,20 @@ private struct BLEScooterControlView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Core Controls")
                 .font(.headline)
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Gear Validation", value: viewModel.gearSelectionStatus.rawValue)
+                LabeledContent("Current Gear", value: gearLabel(viewModel.currentGearSelection))
+                Picker("Gear", selection: gearBinding) {
+                    Text("Walk").tag(0)
+                    Text("Gear1").tag(1)
+                    Text("Gear2").tag(2)
+                    Text("Gear3").tag(3)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!viewModel.isCommandChannelReady)
+            }
+            .padding(.bottom, 8)
+
             LabeledContent("Cruise Command Validation", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent(
                 "Current Cruise State",
@@ -416,6 +431,11 @@ private struct BLEScooterControlView: View {
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onChange(of: viewModel.currentGearSelection) { _, newGear in
+            if let newGear {
+                selectedGear = newGear
+            }
+        }
     }
 
     private var validationStatusCard: some View {
@@ -428,6 +448,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Unbind", value: viewModel.unbindStatus.rawValue)
             LabeledContent("BLE Lock", value: viewModel.lockStatus.rawValue)
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
+            LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
         }
         .padding(16)
@@ -495,6 +516,29 @@ private struct BLEScooterControlView: View {
             .padding(.vertical, 4)
             .background((active ? color : .secondary).opacity(0.15), in: Capsule())
             .foregroundStyle(active ? color : .secondary)
+    }
+
+    private var gearBinding: Binding<Int> {
+        Binding(
+            get: {
+                viewModel.currentGearSelection ?? selectedGear
+            },
+            set: { newValue in
+                selectedGear = newValue
+                viewModel.setGear(newValue)
+            }
+        )
+    }
+
+    private func gearLabel(_ gear: Int?) -> String {
+        guard let gear else { return "Unknown" }
+        switch gear {
+        case 0: return "Walk"
+        case 1: return "Gear1"
+        case 2: return "Gear2"
+        case 3: return "Gear3"
+        default: return "Gear\(gear)"
+        }
     }
 
     private func logCategoryColor(_ category: ValidationLogCategory) -> Color {

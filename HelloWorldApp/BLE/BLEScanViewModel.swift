@@ -15,6 +15,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var lockStatus: ValidationStatus = .notTested
     @Published private(set) var unlockStatus: ValidationStatus = .notTested
     @Published private(set) var cruiseControlStatus: ValidationStatus = .notTested
+    @Published private(set) var gearSelectionStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -25,6 +26,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var isBound = false
     @Published private(set) var lastKnownLockStatus: Bool?
     @Published private(set) var lastKnownCruiseControlEnabled: Bool?
+    @Published private(set) var currentGearSelection: Int?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -51,6 +53,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var lastBindRequestedUserID: UInt32?
     private var cruiseCommandStartedAt: Date?
     private var pendingCruiseExpectedEnabled: Bool?
+    private var gearCommandStartedAt: Date?
+    private var pendingGearExpected: Int?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -300,6 +304,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setGear(_ gear: Int) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "GEAR blocked: command channel not ready")
+            gearSelectionStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "GEAR failed: write characteristic not ready")
+            gearSelectionStatus = .failed
+            return
+        }
+        do {
+            gearCommandStartedAt = Date()
+            pendingGearExpected = gear
+            let payload = try TCB05Command.writeGear(gear)
+            appendLog(.tx, "TX SDK TCB05Command.writeGear(\(gear)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleGearDiagnostics(expectedGear: gear)
+        } catch {
+            appendLog(.error, "GEAR sdk error: \(error)")
+            gearSelectionStatus = .failed
+            pendingGearExpected = nil
+            gearCommandStartedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -386,6 +416,21 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             pendingTcb02Action = nil
             pendingCruiseExpectedEnabled = nil
             cruiseCommandStartedAt = nil
+        }
+    }
+
+    private func scheduleGearDiagnostics(expectedGear: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingGearExpected == expectedGear else { return }
+            let elapsedMs = gearCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(
+                .error,
+                "GEAR diagnostics timeout: no matching gear confirmation after \(elapsedMs)ms expected=\(expectedGear)"
+            )
+            gearSelectionStatus = .partial
+            pendingGearExpected = nil
+            gearCommandStartedAt = nil
         }
     }
 
@@ -609,9 +654,11 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             lockStatus = .notTested
             unlockStatus = .notTested
             cruiseControlStatus = .notTested
+            gearSelectionStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
+            currentGearSelection = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -641,6 +688,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             bindStartedAt = nil
             pendingCruiseExpectedEnabled = nil
             cruiseCommandStartedAt = nil
+            pendingGearExpected = nil
+            gearCommandStartedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -669,6 +718,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             bindStartedAt = nil
             pendingCruiseExpectedEnabled = nil
             cruiseCommandStartedAt = nil
+            pendingGearExpected = nil
+            gearCommandStartedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -837,6 +888,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 isBound = true
                 lastKnownLockStatus = heartbeatModel.lockStatus
                 lastKnownCruiseControlEnabled = heartbeatModel.cruiseControlFunction
+                currentGearSelection = heartbeatModel.gear
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -867,6 +919,36 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     pendingTcb02Action = nil
                     pendingCruiseExpectedEnabled = nil
                     cruiseCommandStartedAt = nil
+                }
+                if let expectedGear = pendingGearExpected {
+                    let actualGear = heartbeatModel.gear
+                    let latencyMs = gearCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "GEAR heartbeat confirmation: latencyMs=\(latencyMs) expected=\(expectedGear) actual=\(actualGear)")
+                    if expectedGear == actualGear {
+                        gearSelectionStatus = .passed
+                        appendLog(.sdkParse, "GEAR result: PASSED")
+                    } else {
+                        gearSelectionStatus = .partial
+                        appendLog(.error, "GEAR heartbeat mismatch expected=\(expectedGear) actual=\(actualGear)")
+                    }
+                    pendingGearExpected = nil
+                    gearCommandStartedAt = nil
+                }
+            } else if let gearModel = model as? TCB05Model {
+                currentGearSelection = gearModel.gear
+                appendLog(.sdkParse, "SDK parsed TCB05Model: gear=\(gearModel.gear) speed=\(gearModel.speed)")
+                if let expectedGear = pendingGearExpected {
+                    let latencyMs = gearCommandStartedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "GEAR callback: latencyMs=\(latencyMs) expected=\(expectedGear) actual=\(gearModel.gear)")
+                    if expectedGear == gearModel.gear {
+                        gearSelectionStatus = .passed
+                        appendLog(.sdkParse, "GEAR result: PASSED")
+                    } else {
+                        gearSelectionStatus = .partial
+                        appendLog(.error, "GEAR response mismatch expected=\(expectedGear) actual=\(gearModel.gear)")
+                    }
+                    pendingGearExpected = nil
+                    gearCommandStartedAt = nil
                 }
             } else if pendingTcb02Action == .bind {
                 appendLog(.error, "BIND pending but received non-TCB02 model: \(type(of: model))")

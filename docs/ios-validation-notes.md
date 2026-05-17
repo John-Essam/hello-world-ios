@@ -19,6 +19,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 
 | Feature | Official iOS API / Flow | Status | Classification | Evidence |
 |---|---|---|---|---|
+| Gear Selection (read/write) | `TCB05Command.writeGear(_:)` + parsed model/heartbeat (`TCB05Model`/`TCB01Model`) | NOT_TESTED | - | Segmented Walk/Gear1/Gear2/Gear3 UI with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
 
 ## Investigation Notes (2026-05-14)
