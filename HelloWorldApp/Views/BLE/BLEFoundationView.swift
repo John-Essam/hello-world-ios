@@ -275,6 +275,7 @@ private struct BLEScooterControlView: View {
         case foundation = "Foundation"
         case telemetry = "Telemetry"
         case mileageTrip = "Mileage & Trip"
+        case diagnostics = "Diagnostics"
         case coreControls = "Core Controls"
         case lights = "Lights"
         case logs = "Logs"
@@ -313,6 +314,8 @@ private struct BLEScooterControlView: View {
                         telemetryBatteryVoltageDetailCard
                     case .mileageTrip:
                         mileageTripCard
+                    case .diagnostics:
+                        diagnosticsCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -762,6 +765,31 @@ private struct BLEScooterControlView: View {
             LabeledContent("Mileage & Trip - Total ODO", value: viewModel.mileageTotalOdoStatus.rawValue)
             LabeledContent("Mileage & Trip - Avg/Max Speed", value: viewModel.mileageSpeedStatsStatus.rawValue)
             LabeledContent("Mileage & Trip - Riding Time", value: viewModel.mileageRidingTimeStatus.rawValue)
+            LabeledContent("Diagnostics - Serial Number", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var diagnosticsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Diagnostics")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Serial Number (0x001D)")
+                    .font(.subheadline.weight(.semibold))
+                LabeledContent("Validation", value: viewModel.diagnosticsSerialNumberStatus.rawValue)
+                LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+                Text("No official iOS SDK command helper/model parser is exposed for cmd1D serial number.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Placeholder only: manual frame path is intentionally not used.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

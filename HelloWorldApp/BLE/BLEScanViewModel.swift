@@ -46,6 +46,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var mileageTotalOdoStatus: ValidationStatus = .notTested
     @Published private(set) var mileageSpeedStatsStatus: ValidationStatus = .failed
     @Published private(set) var mileageRidingTimeStatus: ValidationStatus = .failed
+    @Published private(set) var diagnosticsSerialNumberStatus: ValidationStatus = .failed
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -1780,6 +1781,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageTotalOdoStatus = .notTested
             mileageSpeedStatsStatus = .failed
             mileageRidingTimeStatus = .failed
+            diagnosticsSerialNumberStatus = .failed
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1856,6 +1858,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             appendLog(.error, "SDK_GAP: Battery voltage detail command has no official iOS helper/parser (no TCB0CCommand exposed)")
             appendLog(.error, "SDK_GAP: Riding time has no official iOS command helper/model parser (cmd31 not exposed in SDK commands)")
             appendLog(.error, "SDK_GAP: Speed stats avg/max has no official iOS command helper/model parser (cmd32 not exposed in SDK commands)")
+            appendLog(.error, "SDK_GAP: Serial number has no official iOS SDK helper/model parser (cmd1D is not exposed via command APIs)")
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1952,6 +1955,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageTotalOdoStatus = .notTested
             mileageSpeedStatsStatus = .notTested
             mileageRidingTimeStatus = .notTested
+            diagnosticsSerialNumberStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
@@ -2075,6 +2079,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             mileageTotalOdoStatus = .notTested
             mileageSpeedStatsStatus = .notTested
             mileageRidingTimeStatus = .notTested
+            diagnosticsSerialNumberStatus = .notTested
             gearMaxSpeedReadStatus = .notTested
             gearMaxSpeedWriteStatus = .notTested
             customGearProfilesStatus = .notTested
