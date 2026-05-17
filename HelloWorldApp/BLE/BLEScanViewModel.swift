@@ -538,7 +538,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         customGearProfileExpectedByGear = requested
         customGearProfileReadbackByGear = [:]
         isCustomGearProfileReadbackPhase = false
-        customGearProfilesStatus = .pending
+        customGearProfilesStatus = .partial
         customProfileRequestedG1 = g1
         customProfileRequestedG2 = g2
         customProfileRequestedG3 = g3
