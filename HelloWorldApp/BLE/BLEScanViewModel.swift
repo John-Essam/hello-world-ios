@@ -19,6 +19,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var startModeStatus: ValidationStatus = .notTested
     @Published private(set) var unitSystemStatus: ValidationStatus = .notTested
     @Published private(set) var throttleResponseReadStatus: ValidationStatus = .notTested
+    @Published private(set) var brakeResponseReadStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -33,6 +34,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var isZeroStartModeEnabled: Bool?
     @Published private(set) var isMetricUnitEnabled: Bool?
     @Published private(set) var throttleResponseValue: Int?
+    @Published private(set) var brakeResponseValue: Int?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -67,6 +69,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingMetricUnitExpected: Bool?
     private var throttleReadRequestedAt: Date?
     private var isThrottleReadPending = false
+    private var brakeReadRequestedAt: Date?
+    private var isBrakeReadPending = false
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -420,6 +424,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func readBrakeResponse() {
+        guard isCommandChannelReady else {
+            appendLog(.error, "BRAKE READ blocked: command channel not ready")
+            brakeResponseReadStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "BRAKE READ failed: write characteristic not ready")
+            brakeResponseReadStatus = .failed
+            return
+        }
+        do {
+            brakeReadRequestedAt = Date()
+            isBrakeReadPending = true
+            let payload = try TCB22Command.readResponseTime(type: 1)
+            appendLog(.tx, "TX SDK TCB22Command.readResponseTime(type:1) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleBrakeReadDiagnostics()
+        } catch {
+            appendLog(.error, "BRAKE READ sdk error: \(error)")
+            brakeResponseReadStatus = .failed
+            isBrakeReadPending = false
+            brakeReadRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -563,6 +593,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             throttleResponseReadStatus = .partial
             isThrottleReadPending = false
             throttleReadRequestedAt = nil
+        }
+    }
+
+    private func scheduleBrakeReadDiagnostics() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard isBrakeReadPending else { return }
+            let elapsedMs = brakeReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "BRAKE READ diagnostics timeout: no TCB22 brake response after \(elapsedMs)ms")
+            brakeResponseReadStatus = .partial
+            isBrakeReadPending = false
+            brakeReadRequestedAt = nil
         }
     }
 
@@ -790,6 +832,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             startModeStatus = .notTested
             unitSystemStatus = .notTested
             throttleResponseReadStatus = .notTested
+            brakeResponseReadStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -797,6 +840,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isZeroStartModeEnabled = nil
             isMetricUnitEnabled = nil
             throttleResponseValue = nil
+            brakeResponseValue = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -834,6 +878,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unitSystemCommandStartedAt = nil
             isThrottleReadPending = false
             throttleReadRequestedAt = nil
+            isBrakeReadPending = false
+            brakeReadRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -870,6 +916,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             unitSystemCommandStartedAt = nil
             isThrottleReadPending = false
             throttleReadRequestedAt = nil
+            isBrakeReadPending = false
+            brakeReadRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1141,6 +1189,16 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         appendLog(.sdkParse, "THROTTLE READ result: PASSED")
                         isThrottleReadPending = false
                         throttleReadRequestedAt = nil
+                    }
+                } else if responseModel.responseType == .brake {
+                    brakeResponseValue = responseModel.response
+                    if isBrakeReadPending {
+                        let latencyMs = brakeReadRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                        appendLog(.sdkParse, "BRAKE READ callback: latencyMs=\(latencyMs) value=\(responseModel.response)")
+                        brakeResponseReadStatus = .passed
+                        appendLog(.sdkParse, "BRAKE READ result: PASSED")
+                        isBrakeReadPending = false
+                        brakeReadRequestedAt = nil
                     }
                 }
             } else if pendingTcb02Action == .bind {
