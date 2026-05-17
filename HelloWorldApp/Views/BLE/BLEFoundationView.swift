@@ -262,6 +262,7 @@ private struct BLEScooterControlView: View {
     @State private var selectedGear = 0
     @State private var selectedZeroStartMode = true
     @State private var selectedMetricUnit = true
+    @State private var gearMaxSpeedWriteDraft: Double = 25
     @State private var throttleResponseDraft: Double = 5
     @State private var brakeResponseDraft: Double = 5
     @State private var ambientModeDraft = 1
@@ -460,6 +461,43 @@ private struct BLEScooterControlView: View {
             .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Gear Max Speed Write", value: viewModel.gearMaxSpeedWriteStatus.rawValue)
+                LabeledContent("Target Speed", value: "\(Int(gearMaxSpeedWriteDraft.rounded()))")
+                Slider(value: $gearMaxSpeedWriteDraft, in: 0...50, step: 1)
+                    .disabled(!viewModel.isCommandChannelReady)
+                HStack {
+                    Button("Write G1") {
+                        viewModel.writeGearMaxSpeed(gear: 1, speed: Int(gearMaxSpeedWriteDraft.rounded()))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Write G2") {
+                        viewModel.writeGearMaxSpeed(gear: 2, speed: Int(gearMaxSpeedWriteDraft.rounded()))
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Write G3") {
+                        viewModel.writeGearMaxSpeed(gear: 3, speed: Int(gearMaxSpeedWriteDraft.rounded()))
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+                let summaryGear = viewModel.lastGearMaxSpeedWriteRequestedGear.map { "G\($0)" } ?? "n/a"
+                let summaryRequested = viewModel.lastGearMaxSpeedWriteRequestedSpeed.map(String.init) ?? "n/a"
+                let summarySdk = viewModel.lastGearMaxSpeedWriteSdkSpeed.map(String.init) ?? "n/a"
+                let summaryReadback = viewModel.lastGearMaxSpeedWriteReadbackSpeed.map(String.init) ?? "n/a"
+                Text("Last write \(summaryGear): requested=\(summaryRequested) sdkValue=\(summarySdk) readback=\(summaryReadback)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Official SDK API: `TCB05Command.writeGearMaxSpeed(gear:speed:)`")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
                 LabeledContent("Start Mode Validation", value: viewModel.startModeStatus.rawValue)
                 LabeledContent("Current Start Mode", value: startModeLabel(viewModel.isZeroStartModeEnabled))
                 Picker("Start Mode", selection: startModeBinding) {
@@ -634,6 +672,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("BLE Unlock", value: viewModel.unlockStatus.rawValue)
             LabeledContent("Core Controls - Gear", value: viewModel.gearSelectionStatus.rawValue)
             LabeledContent("Core Controls - Gear Max Speed Read", value: viewModel.gearMaxSpeedReadStatus.rawValue)
+            LabeledContent("Core Controls - Gear Max Speed Write", value: viewModel.gearMaxSpeedWriteStatus.rawValue)
             LabeledContent("Core Controls - Start Mode", value: viewModel.startModeStatus.rawValue)
             LabeledContent("Core Controls - Unit", value: viewModel.unitSystemStatus.rawValue)
             LabeledContent("Core Controls - Throttle Read", value: viewModel.throttleResponseReadStatus.rawValue)
