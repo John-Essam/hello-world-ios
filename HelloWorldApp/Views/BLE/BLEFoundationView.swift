@@ -303,6 +303,7 @@ private struct BLEScooterControlView: View {
                         telemetryOperationalFlagsCard
                         telemetryControllerTempCard
                         telemetryBatteryTempCard
+                        telemetryMotorTempCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -619,6 +620,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Operational Flags", value: viewModel.telemetryOperationalFlagsStatus.rawValue)
             LabeledContent("Telemetry - Controller Temp", value: viewModel.telemetryControllerTempStatus.rawValue)
             LabeledContent("Telemetry - Battery Temp", value: viewModel.telemetryBatteryTempStatus.rawValue)
+            LabeledContent("Telemetry - Motor Temp", value: viewModel.telemetryMotorTempStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -771,6 +773,23 @@ private struct BLEScooterControlView: View {
             LabeledContent("Validation", value: viewModel.telemetryBatteryTempStatus.rawValue)
             LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
             Text("No documented helper equivalent to `readTemp(.battery)` exists in current iOS SDK source.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryMotorTempCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Motor Temperature")
+                .font(.headline)
+
+            Text("Not available in official iOS SDK")
+                .font(.subheadline.weight(.semibold))
+            LabeledContent("Validation", value: viewModel.telemetryMotorTempStatus.rawValue)
+            LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+            Text("No documented helper equivalent to `readTemp(.motor)` exists in current iOS SDK source.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
