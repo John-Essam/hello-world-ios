@@ -29,6 +29,12 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | NFC Enable / Disable | `TCB03Command.writeNfcStatus(_:)` + parsed `TCB03Model.nfcStatus` | NOT_TESTED | - | Enable/Disable actions with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
 | Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
 
+## Lights
+
+| Feature | Official iOS API / Flow | Status | Classification | Evidence |
+|---|---|---|---|---|
+| Front Light Control | `TCB04Command.writeFrontLightStatus(_:)` + heartbeat confirmation from `TCB01Model.headlight` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; heartbeat confirmation logic wired for validation on real scooter |
+
 ## Investigation Notes (2026-05-14)
 
 - Repeated scan callbacks were caused by app configuration: `CBCentralManagerScanOptionAllowDuplicatesKey` was set to `true`, which intentionally emits a discovery callback for every advertisement packet.

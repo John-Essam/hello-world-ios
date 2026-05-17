@@ -294,7 +294,7 @@ private struct BLEScooterControlView: View {
                     case .coreControls:
                         coreControlsCard
                     case .lights:
-                        lightsComingSoonCard
+                        lightsControlsCard
                     case .logs:
                         logsCard
                     }
@@ -583,6 +583,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - NFC Read", value: viewModel.nfcReadStatus.rawValue)
             LabeledContent("Core Controls - NFC Write", value: viewModel.nfcWriteStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
+            LabeledContent("Lights - Front Light", value: viewModel.frontLightStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -621,13 +622,27 @@ private struct BLEScooterControlView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var lightsComingSoonCard: some View {
+    private var lightsControlsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Lights")
                 .font(.headline)
-            Text("Front Light, Ambient Power, and Ambient RGB/Mode controls will appear here as each feature is implemented and validated.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Front Light Validation", value: viewModel.frontLightStatus.rawValue)
+                LabeledContent("Current Front Light", value: viewModel.isFrontLightOn == nil ? "Unknown" : (viewModel.isFrontLightOn == true ? "ON" : "OFF"))
+                HStack {
+                    Button("Front Light ON") {
+                        viewModel.setFrontLightStatus(enabled: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Front Light OFF") {
+                        viewModel.setFrontLightStatus(enabled: false)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+            }
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

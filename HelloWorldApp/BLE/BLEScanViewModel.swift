@@ -24,6 +24,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var brakeResponseWriteStatus: ValidationStatus = .notTested
     @Published private(set) var nfcReadStatus: ValidationStatus = .notTested
     @Published private(set) var nfcWriteStatus: ValidationStatus = .notTested
+    @Published private(set) var frontLightStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -40,6 +41,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var throttleResponseValue: Int?
     @Published private(set) var brakeResponseValue: Int?
     @Published private(set) var isNfcEnabled: Bool?
+    @Published private(set) var isFrontLightOn: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -84,6 +86,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isNfcReadPending = false
     private var nfcWriteRequestedAt: Date?
     private var pendingNfcWriteExpected: Bool?
+    private var frontLightRequestedAt: Date?
+    private var pendingFrontLightExpected: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -577,6 +581,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setFrontLightStatus(enabled: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "FRONT LIGHT blocked: command channel not ready")
+            frontLightStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "FRONT LIGHT failed: write characteristic not ready")
+            frontLightStatus = .failed
+            return
+        }
+        do {
+            frontLightRequestedAt = Date()
+            pendingFrontLightExpected = enabled
+            let payload = try TCB04Command.writeFrontLightStatus(enabled)
+            appendLog(.tx, "TX SDK TCB04Command.writeFrontLightStatus(\(enabled)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleFrontLightDiagnostics(expectedStatus: enabled)
+        } catch {
+            appendLog(.error, "FRONT LIGHT sdk error: \(error)")
+            frontLightStatus = .failed
+            pendingFrontLightExpected = nil
+            frontLightRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -780,6 +810,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             nfcWriteStatus = .partial
             pendingNfcWriteExpected = nil
             nfcWriteRequestedAt = nil
+        }
+    }
+
+    private func scheduleFrontLightDiagnostics(expectedStatus: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingFrontLightExpected == expectedStatus else { return }
+            let elapsedMs = frontLightRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "FRONT LIGHT diagnostics timeout: no heartbeat confirmation after \(elapsedMs)ms")
+            frontLightStatus = .partial
+            pendingFrontLightExpected = nil
+            frontLightRequestedAt = nil
         }
     }
 
@@ -1012,6 +1054,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             brakeResponseWriteStatus = .notTested
             nfcReadStatus = .notTested
             nfcWriteStatus = .notTested
+            frontLightStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1021,6 +1064,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             throttleResponseValue = nil
             brakeResponseValue = nil
             isNfcEnabled = nil
+            isFrontLightOn = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1068,6 +1112,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcReadRequestedAt = nil
             pendingNfcWriteExpected = nil
             nfcWriteRequestedAt = nil
+            pendingFrontLightExpected = nil
+            frontLightRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1114,6 +1160,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcReadRequestedAt = nil
             pendingNfcWriteExpected = nil
             nfcWriteRequestedAt = nil
+            pendingFrontLightExpected = nil
+            frontLightRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1285,6 +1333,7 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 currentGearSelection = heartbeatModel.gear
                 isZeroStartModeEnabled = !heartbeatModel.startMode
                 isMetricUnitEnabled = !heartbeatModel.metricMileUnit
+                isFrontLightOn = heartbeatModel.headlight
                 lastHeartbeat = HeartbeatSnapshot(
                     powerPercent: heartbeatModel.power,
                     realTimeSpeed: heartbeatModel.realTimeSpeed,
@@ -1357,6 +1406,20 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     }
                     pendingMetricUnitExpected = nil
                     unitSystemCommandStartedAt = nil
+                }
+                if let expectedFrontLight = pendingFrontLightExpected {
+                    let actualFrontLight = heartbeatModel.headlight
+                    let latencyMs = frontLightRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "FRONT LIGHT heartbeat confirmation: latencyMs=\(latencyMs) expected=\(expectedFrontLight) actual=\(actualFrontLight)")
+                    if expectedFrontLight == actualFrontLight {
+                        frontLightStatus = .passed
+                        appendLog(.sdkParse, "FRONT LIGHT result: PASSED")
+                    } else {
+                        frontLightStatus = .partial
+                        appendLog(.error, "FRONT LIGHT heartbeat mismatch expected=\(expectedFrontLight) actual=\(actualFrontLight)")
+                    }
+                    pendingFrontLightExpected = nil
+                    frontLightRequestedAt = nil
                 }
             } else if let gearModel = model as? TCB05Model {
                 currentGearSelection = gearModel.gear
