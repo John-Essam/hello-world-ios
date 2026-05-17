@@ -25,8 +25,8 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Throttle Response Read | `TCB22Command.readResponseTime(type:)` with `type=0` | NOT_TESTED | - | Read button + value display with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
 | Brake Response Read | `TCB22Command.readResponseTime(type:)` with `type=1` | NOT_TESTED | - | Read button + value display with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
 | Throttle / Brake Response Write | `TCB22Command.writeResponseTime(type:time:)` with `type=0` / `type=1` | NOT_TESTED | - | Slider-based 0-10 write controls for throttle/brake with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
-| NFC Status Read | `TCB03Command.readNfcStatus()` + parsed `TCB03Model.nfcStatus` | NOT_TESTED | - | Read action + current status indicator with TX/RX/SDK-parse/timing logs implemented; live scooter validation pending |
-| NFC Enable / Disable | `TCB03Command.writeNfcStatus(_:)` + parsed `TCB03Model.nfcStatus` | NOT_TESTED | - | Enable/Disable actions with TX/RX/SDK-parse/timing confirmation logs implemented; live scooter validation pending |
+| NFC Status Read | `TCB03Command.readNfcStatus()` + parsed `TCB03Model.nfcStatus` | FAILED | IOS_SDK_BUG | SDK source audit + runtime frame audit show `cmd03` frames are generated with declared payload length `0` while `TCB03Command` appends 2 bytes. Issue: [#2](https://github.com/John-Essam/hello-world-ios/issues/2) |
+| NFC Enable / Disable | `TCB03Command.writeNfcStatus(_:)` + parsed `TCB03Model.nfcStatus` | FAILED | IOS_SDK_BUG | Same `cmd03` frame-length mismatch root cause as NFC read (SDK command payload vs metadata mismatch). Issue: [#1](https://github.com/John-Essam/hello-world-ios/issues/1) |
 | Cruise Control ON/OFF | `TCB02Command.writeCruiseControlFunction(status:)` + heartbeat confirmation from `TCB01Model.cruiseControlFunction` | NOT_TESTED | - | TX + timing + parsed heartbeat confirmation logs implemented in dedicated Core Controls section UI; live scooter validation pending |
 
 ## Lights
@@ -35,7 +35,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 |---|---|---|---|---|
 | Front Light Control | `TCB04Command.writeFrontLightStatus(_:)` + heartbeat confirmation from `TCB01Model.headlight` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; heartbeat confirmation logic wired for validation on real scooter |
 | Ambient Light ON/OFF | `TCB04Command.writeAmbientLightStatus(_:)` + parsed `TCB04Model.ambientLightStatus` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; TCB04 callback confirmation wired for validation |
-| Ambient Light RGB / Modes | `TCB1ACommand.readAmbientLight()` + `TCB1ACommand.writeAmbientLight(type:R:G:B)` + parsed `TCB1AModel` | NOT_TESTED | - | Solid/Breathing/7-Color Magic mode picker + color picker with TX/RX/SDK-parse/timing logs and parsed model confirmation |
+| Ambient Light RGB / Modes | `TCB1ACommand.readAmbientLight()` + `TCB1ACommand.writeAmbientLight(type:R:G:B)` + parsed `TCB1AModel` | FAILED | IOS_SDK_BUG | SDK source audit + runtime frame audit show `cmd1A` write frames are generated with declared payload length `0` while write API appends 5 bytes. Issues: [#3](https://github.com/John-Essam/hello-world-ios/issues/3), [#4](https://github.com/John-Essam/hello-world-ios/issues/4), [#5](https://github.com/John-Essam/hello-world-ios/issues/5), [#6](https://github.com/John-Essam/hello-world-ios/issues/6) |
 
 ## Investigation Notes (2026-05-14)
 
@@ -49,6 +49,21 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 - Real-device evidence showed `cardoOX3` can connect with services `180A` + `5443000B-...` instead of the earlier hard-coded reference UUIDs, so characteristic binding now uses official vendor write/notify UUIDs (`FFE1` / `FFE2`) across discovered services.
 - Bind investigation found parameter sensitivity per scooter/account context. Current target scooter returns `boundId=5` when bind is attempted with another ID, so iOS bind now uses `userID=5` and logs requested-vs-returned IDs for clear root-cause evidence.
 - UI/UX flow now matches validation workflow: scan/connect is isolated on a dedicated scanner screen, and successful connect navigates to a separate scooter-control/testing screen.
+
+## SDK Audit Notes (2026-05-17)
+
+- Added strict SDK audit logs for failing features:
+  - command name, payload byte count, declared frame payload length, expected frame size validity, RX CRC validity, parse model type, pending callback timeout, and parser-risk warnings.
+- Static SDK command audit confirms malformed generated command frames:
+  - `TCB03Command.readNfcStatus` and `TCB03Command.writeNfcStatus` append 2 content bytes, but `TCBFunctionCode.cmdDataLength` has no `.cmd03` case and defaults to `0`.
+  - `TCB1ACommand.writeAmbientLight` appends 5 content bytes, but `TCBFunctionCode.cmdDataLength` has no `.cmd1A` case and defaults to `0`.
+- This is a vendor SDK command framing defect (not app packet logic), and feature-level issues were created with shared-root-cause mapping:
+  - NFC Read: [#2](https://github.com/John-Essam/hello-world-ios/issues/2)
+  - NFC Write: [#1](https://github.com/John-Essam/hello-world-ios/issues/1)
+  - Ambient Solid: [#3](https://github.com/John-Essam/hello-world-ios/issues/3)
+  - Ambient Breathing: [#4](https://github.com/John-Essam/hello-world-ios/issues/4)
+  - Ambient 7-Color Magic: [#5](https://github.com/John-Essam/hello-world-ios/issues/5)
+  - Ambient Read/Apply flow: [#6](https://github.com/John-Essam/hello-world-ios/issues/6)
 
 ## Classification Rules
 

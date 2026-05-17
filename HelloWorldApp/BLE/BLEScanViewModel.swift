@@ -101,6 +101,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var isAmbientStyleReadPending = false
     private var ambientStyleWriteRequestedAt: Date?
     private var pendingAmbientStyleExpected: (mode: Int, red: Int, green: Int, blue: Int)?
+    private var pendingSdkAuditsByFunction: [UInt8: [PendingSDKAudit]] = [:]
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -120,6 +121,15 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         case cruise
     }
 
+    private struct PendingSDKAudit {
+        let id: UUID
+        let commandName: String
+        let featureName: String
+        let functionCode: UInt8
+        let expectedModel: String
+        let startedAt: Date
+    }
+
     override init() {
         super.init()
         #if targetEnvironment(simulator)
@@ -132,6 +142,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             queue: nil,
             options: [CBCentralManagerOptionShowPowerAlertKey: true]
         )
+        runStaticSDKCommandAudit()
     }
 
     func toggleScan() {
@@ -558,7 +569,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             isNfcReadPending = true
             let payload = try TCB03Command.readNfcStatus()
             appendLog(.tx, "TX SDK TCB03Command.readNfcStatus() bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB03Command.readNfcStatus",
+                featureName: "Core Controls / NFC Status Read",
+                expectedModel: "TCB03Model"
+            )
             scheduleNfcReadDiagnostics()
         } catch {
             appendLog(.error, "NFC READ sdk error: \(error)")
@@ -584,7 +600,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             pendingNfcWriteExpected = enabled
             let payload = try TCB03Command.writeNfcStatus(enabled)
             appendLog(.tx, "TX SDK TCB03Command.writeNfcStatus(\(enabled)) bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB03Command.writeNfcStatus(\(enabled))",
+                featureName: "Core Controls / NFC Enable Disable",
+                expectedModel: "TCB03Model"
+            )
             scheduleNfcWriteDiagnostics(expectedStatus: enabled)
         } catch {
             appendLog(.error, "NFC WRITE sdk error: \(error)")
@@ -610,7 +631,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             pendingFrontLightExpected = enabled
             let payload = try TCB04Command.writeFrontLightStatus(enabled)
             appendLog(.tx, "TX SDK TCB04Command.writeFrontLightStatus(\(enabled)) bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB04Command.writeFrontLightStatus(\(enabled))",
+                featureName: "Lights / Front Light",
+                expectedModel: "TCB01Model heartbeat or TCB04Model"
+            )
             scheduleFrontLightDiagnostics(expectedStatus: enabled)
         } catch {
             appendLog(.error, "FRONT LIGHT sdk error: \(error)")
@@ -636,7 +662,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             pendingAmbientLightExpected = enabled
             let payload = try TCB04Command.writeAmbientLightStatus(enabled)
             appendLog(.tx, "TX SDK TCB04Command.writeAmbientLightStatus(\(enabled)) bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB04Command.writeAmbientLightStatus(\(enabled))",
+                featureName: "Lights / Ambient Light Power",
+                expectedModel: "TCB04Model"
+            )
             scheduleAmbientLightDiagnostics(expectedStatus: enabled)
         } catch {
             appendLog(.error, "AMBIENT LIGHT sdk error: \(error)")
@@ -662,7 +693,12 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             isAmbientStyleReadPending = true
             let payload = try TCB1ACommand.readAmbientLight()
             appendLog(.tx, "TX SDK TCB1ACommand.readAmbientLight() bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB1ACommand.readAmbientLight",
+                featureName: "Lights / Ambient Read Apply",
+                expectedModel: "TCB1AModel"
+            )
             scheduleAmbientStyleReadDiagnostics()
         } catch {
             appendLog(.error, "AMBIENT STYLE READ sdk error: \(error)")
@@ -694,11 +730,20 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             return
         }
         do {
+            appendLog(
+                .connect,
+                "AMBIENT STYLE sequence check: connected=\(connectionState == .connected) bound=\(isBound) notifyReady=\(notifyChannelReady) ambientPower=\(String(describing: isAmbientLightOn)) heartbeatCount=\(heartbeatCount)"
+            )
             ambientStyleWriteRequestedAt = Date()
             pendingAmbientStyleExpected = (mode: mode, red: red, green: green, blue: blue)
             let payload = try TCB1ACommand.writeAmbientLight(type: mode, R: red, G: green, B: blue)
             appendLog(.tx, "TX SDK TCB1ACommand.writeAmbientLight(type:\(mode),R:\(red),G:\(green),B:\(blue)) bytes=\(payload.hexString)")
-            send(payload)
+            sendAudited(
+                payload,
+                commandName: "TCB1ACommand.writeAmbientLight(type:\(mode),R:\(red),G:\(green),B:\(blue))",
+                featureName: "Lights / Ambient Solid Breathing Magic",
+                expectedModel: "TCB1AModel"
+            )
             scheduleAmbientStyleWriteDiagnostics(expected: (mode: mode, red: red, green: green, blue: blue))
         } catch {
             appendLog(.error, "AMBIENT STYLE WRITE sdk error: \(error)")
@@ -712,6 +757,30 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
             logs.removeLast(logs.count - 200)
+        }
+    }
+
+    private func runStaticSDKCommandAudit() {
+        let cases: [(name: String, payload: Data?)] = [
+            ("TCB03Command.readNfcStatus", try? TCB03Command.readNfcStatus()),
+            ("TCB03Command.writeNfcStatus(true)", try? TCB03Command.writeNfcStatus(true)),
+            ("TCB04Command.writeAmbientLightStatus(true)", try? TCB04Command.writeAmbientLightStatus(true)),
+            ("TCB1ACommand.readAmbientLight", try? TCB1ACommand.readAmbientLight()),
+            ("TCB1ACommand.writeAmbientLight(type:1,R:255,G:0,B:0)", try? TCB1ACommand.writeAmbientLight(type: 1, R: 255, G: 0, B: 0))
+        ]
+        for entry in cases {
+            guard let payload = entry.payload else {
+                appendLog(.error, "SDK STATIC AUDIT build failed: \(entry.name)")
+                continue
+            }
+            let frame = auditFrame(payload)
+            appendLog(
+                .sdkParse,
+                "SDK STATIC AUDIT frame: command=\(entry.name) bytes=\(frame.totalBytes) declaredLen=\(frame.declaredDataLength) expectedFrameBytes=\(frame.expectedFrameBytes) frameValid=\(frame.frameValid)"
+            )
+            if !frame.frameValid {
+                appendLog(.error, "SDK STATIC AUDIT malformed TX frame detected for \(entry.name)")
+            }
         }
     }
 
@@ -1210,6 +1279,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientLightRed = nil
             ambientLightGreen = nil
             ambientLightBlue = nil
+            pendingSdkAuditsByFunction.removeAll()
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1265,6 +1335,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleReadRequestedAt = nil
             pendingAmbientStyleExpected = nil
             ambientStyleWriteRequestedAt = nil
+            pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1319,6 +1390,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             ambientStyleReadRequestedAt = nil
             pendingAmbientStyleExpected = nil
             ambientStyleWriteRequestedAt = nil
+            pendingSdkAuditsByFunction.removeAll()
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1417,9 +1489,38 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                 return
             }
             let data = characteristic.value ?? Data()
+            if data.isEmpty {
+                appendLog(.error, "RX callback returned empty payload (nil/zero bytes)")
+            }
             appendLog(.rx, "RX callback: char=\(characteristic.uuid.uuidString) bytes=\(data.hexString) error=\(String(describing: error))")
+            let rxFrame = auditFrame(data)
+            let crcValid = TCBManager.checkCRC16Data(data)
+            let rxFunctionLabel = rxFrame.functionCode.map { String(format: "0x%02X", $0) } ?? "unknown"
+            appendLog(
+                .rx,
+                "SDK AUDIT RX frame: bytes=\(rxFrame.totalBytes) declaredLen=\(rxFrame.declaredDataLength) expectedFrameBytes=\(rxFrame.expectedFrameBytes) frameValid=\(rxFrame.frameValid) crcValid=\(crcValid) function=\(rxFunctionLabel)"
+            )
+            if !rxFrame.frameValid {
+                appendLog(.error, "SDK AUDIT RX malformed frame length detected before parse")
+            }
+            if !crcValid {
+                appendLog(.error, "SDK AUDIT RX CRC invalid before parse")
+            }
+            if let functionCode = rxFrame.functionCode,
+               functionCode == TCBFunctionCode.cmd1A.rawValue,
+               data.count >= 5 {
+                let declaredPayloadLen = Int(data[4])
+                if declaredPayloadLen < 4 {
+                    appendLog(.error, "SDK AUDIT parser risk: cmd1A payloadLen=\(declaredPayloadLen) but TCB1AModel expects >=4 bytes")
+                }
+            }
             let model = TCBManager.convertToModel(data: data)
-            appendLog(.sdkParse, "SDK parsed model: \(type(of: model))")
+            let parsedModelName = String(describing: type(of: model))
+            appendLog(.sdkParse, "SDK parsed model: \(parsedModelName)")
+            resolvePendingSDKAudit(with: data, parsedModelName: parsedModelName)
+            if parsedModelName == "TCBBLEModel" {
+                appendLog(.error, "SDK parser returned TCBBLEModel (unparsed/ignored frame)")
+            }
             if pendingTcb02Action == .bind {
                 bindResponseCount += 1
                 appendLog(.sdkParse, "BIND pending response #\(bindResponseCount): model=\(type(of: model))")
@@ -1725,6 +1826,31 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         }
     }
 
+    private func sendAudited(_ data: Data, commandName: String, featureName: String, expectedModel: String) {
+        let frameAudit = auditFrame(data)
+        appendLog(
+            .tx,
+            "SDK AUDIT TX: command=\(commandName) feature=\(featureName) bytes=\(frameAudit.totalBytes) declaredLen=\(frameAudit.declaredDataLength) expectedFrameBytes=\(frameAudit.expectedFrameBytes) frameValid=\(frameAudit.frameValid)"
+        )
+        if !frameAudit.frameValid {
+            appendLog(
+                .error,
+                "SDK AUDIT TX malformed frame for \(commandName): declaredLen does not match payload bytes"
+            )
+        }
+        if let functionCode = frameAudit.functionCode {
+            registerPendingSDKAudit(
+                commandName: commandName,
+                featureName: featureName,
+                functionCode: functionCode,
+                expectedModel: expectedModel
+            )
+        } else {
+            appendLog(.error, "SDK AUDIT TX missing function code in payload for \(commandName)")
+        }
+        send(data)
+    }
+
     private func send(_ data: Data) {
         guard isCommandChannelReady else {
             appendLog(
@@ -1739,6 +1865,68 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         }
         connectedPeripheral.writeValue(data, for: writeCharacteristic, type: .withoutResponse)
         appendLog(.tx, "TX write dispatched to char=\(writeCharacteristic.uuid.uuidString)")
+    }
+
+    private func registerPendingSDKAudit(commandName: String, featureName: String, functionCode: UInt8, expectedModel: String) {
+        let audit = PendingSDKAudit(
+            id: UUID(),
+            commandName: commandName,
+            featureName: featureName,
+            functionCode: functionCode,
+            expectedModel: expectedModel,
+            startedAt: Date()
+        )
+        pendingSdkAuditsByFunction[functionCode, default: []].append(audit)
+        appendLog(
+            .tx,
+            "SDK AUDIT pending command registered: command=\(commandName) function=0x\(String(format: "%02X", functionCode)) expectedModel=\(expectedModel)"
+        )
+        schedulePendingSDKAuditTimeout(audit)
+    }
+
+    private func schedulePendingSDKAuditTimeout(_ audit: PendingSDKAudit) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard let index = pendingSdkAuditsByFunction[audit.functionCode]?.firstIndex(where: { $0.id == audit.id }) else { return }
+            pendingSdkAuditsByFunction[audit.functionCode]?.remove(at: index)
+            if pendingSdkAuditsByFunction[audit.functionCode]?.isEmpty == true {
+                pendingSdkAuditsByFunction[audit.functionCode] = nil
+            }
+            let elapsedMs = Int(Date().timeIntervalSince(audit.startedAt) * 1000)
+            appendLog(
+                .error,
+                "SDK AUDIT timeout: command=\(audit.commandName) feature=\(audit.featureName) function=0x\(String(format: "%02X", audit.functionCode)) no matching RX/parse in \(elapsedMs)ms"
+            )
+        }
+    }
+
+    private func resolvePendingSDKAudit(with data: Data, parsedModelName: String) {
+        guard data.count >= 3 else { return }
+        let functionCode = data[2]
+        guard var audits = pendingSdkAuditsByFunction[functionCode], !audits.isEmpty else { return }
+        let audit = audits.removeFirst()
+        if audits.isEmpty {
+            pendingSdkAuditsByFunction[functionCode] = nil
+        } else {
+            pendingSdkAuditsByFunction[functionCode] = audits
+        }
+        let elapsedMs = Int(Date().timeIntervalSince(audit.startedAt) * 1000)
+        appendLog(
+            .sdkParse,
+            "SDK AUDIT callback: command=\(audit.commandName) feature=\(audit.featureName) function=0x\(String(format: "%02X", audit.functionCode)) latencyMs=\(elapsedMs) parsedModel=\(parsedModelName)"
+        )
+    }
+
+    private func auditFrame(_ data: Data) -> (totalBytes: Int, declaredDataLength: Int, expectedFrameBytes: Int, frameValid: Bool, functionCode: UInt8?) {
+        let totalBytes = data.count
+        guard totalBytes >= 5 else {
+            return (totalBytes, -1, -1, false, nil)
+        }
+        let declaredDataLength = Int(data[4])
+        let expectedFrameBytes = 5 + declaredDataLength + 2
+        let frameValid = totalBytes == expectedFrameBytes
+        let functionCode = data[2]
+        return (totalBytes, declaredDataLength, expectedFrameBytes, frameValid, functionCode)
     }
 
     private func describe(_ error: (any Error)?) -> String {
