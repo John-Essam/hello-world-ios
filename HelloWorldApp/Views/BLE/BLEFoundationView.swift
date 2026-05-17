@@ -584,6 +584,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Core Controls - NFC Write", value: viewModel.nfcWriteStatus.rawValue)
             LabeledContent("Core Controls - Cruise", value: viewModel.cruiseControlStatus.rawValue)
             LabeledContent("Lights - Front Light", value: viewModel.frontLightStatus.rawValue)
+            LabeledContent("Lights - Ambient Power", value: viewModel.ambientLightStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -638,6 +639,25 @@ private struct BLEScooterControlView: View {
 
                     Button("Front Light OFF") {
                         viewModel.setFrontLightStatus(enabled: false)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.isCommandChannelReady)
+                }
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Ambient Light Validation", value: viewModel.ambientLightStatus.rawValue)
+                LabeledContent("Current Ambient Light", value: viewModel.isAmbientLightOn == nil ? "Unknown" : (viewModel.isAmbientLightOn == true ? "ON" : "OFF"))
+                HStack {
+                    Button("Ambient ON") {
+                        viewModel.setAmbientLightStatus(enabled: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.isCommandChannelReady)
+
+                    Button("Ambient OFF") {
+                        viewModel.setAmbientLightStatus(enabled: false)
                     }
                     .buttonStyle(.bordered)
                     .disabled(!viewModel.isCommandChannelReady)

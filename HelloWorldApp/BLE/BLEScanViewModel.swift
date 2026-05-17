@@ -25,6 +25,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var nfcReadStatus: ValidationStatus = .notTested
     @Published private(set) var nfcWriteStatus: ValidationStatus = .notTested
     @Published private(set) var frontLightStatus: ValidationStatus = .notTested
+    @Published private(set) var ambientLightStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -42,6 +43,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var brakeResponseValue: Int?
     @Published private(set) var isNfcEnabled: Bool?
     @Published private(set) var isFrontLightOn: Bool?
+    @Published private(set) var isAmbientLightOn: Bool?
     @Published private(set) var heartbeatCount = 0
     @Published private(set) var scanCallbackCount = 0
     @Published private(set) var scanDuplicateCallbackCount = 0
@@ -88,6 +90,8 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var pendingNfcWriteExpected: Bool?
     private var frontLightRequestedAt: Date?
     private var pendingFrontLightExpected: Bool?
+    private var ambientLightRequestedAt: Date?
+    private var pendingAmbientLightExpected: Bool?
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -607,6 +611,32 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
         }
     }
 
+    func setAmbientLightStatus(enabled: Bool) {
+        guard isCommandChannelReady else {
+            appendLog(.error, "AMBIENT LIGHT blocked: command channel not ready")
+            ambientLightStatus = .failed
+            return
+        }
+        guard writeCharacteristic != nil else {
+            appendLog(.error, "AMBIENT LIGHT failed: write characteristic not ready")
+            ambientLightStatus = .failed
+            return
+        }
+        do {
+            ambientLightRequestedAt = Date()
+            pendingAmbientLightExpected = enabled
+            let payload = try TCB04Command.writeAmbientLightStatus(enabled)
+            appendLog(.tx, "TX SDK TCB04Command.writeAmbientLightStatus(\(enabled)) bytes=\(payload.hexString)")
+            send(payload)
+            scheduleAmbientLightDiagnostics(expectedStatus: enabled)
+        } catch {
+            appendLog(.error, "AMBIENT LIGHT sdk error: \(error)")
+            ambientLightStatus = .failed
+            pendingAmbientLightExpected = nil
+            ambientLightRequestedAt = nil
+        }
+    }
+
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
         logs.insert(ValidationLog(category: category, message: message), at: 0)
         if logs.count > 200 {
@@ -822,6 +852,18 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
             frontLightStatus = .partial
             pendingFrontLightExpected = nil
             frontLightRequestedAt = nil
+        }
+    }
+
+    private func scheduleAmbientLightDiagnostics(expectedStatus: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard pendingAmbientLightExpected == expectedStatus else { return }
+            let elapsedMs = ambientLightRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+            appendLog(.error, "AMBIENT LIGHT diagnostics timeout: no TCB04 confirmation after \(elapsedMs)ms")
+            ambientLightStatus = .partial
+            pendingAmbientLightExpected = nil
+            ambientLightRequestedAt = nil
         }
     }
 
@@ -1055,6 +1097,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcReadStatus = .notTested
             nfcWriteStatus = .notTested
             frontLightStatus = .notTested
+            ambientLightStatus = .notTested
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1065,6 +1108,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             brakeResponseValue = nil
             isNfcEnabled = nil
             isFrontLightOn = nil
+            isAmbientLightOn = nil
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1114,6 +1158,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcWriteRequestedAt = nil
             pendingFrontLightExpected = nil
             frontLightRequestedAt = nil
+            pendingAmbientLightExpected = nil
+            ambientLightRequestedAt = nil
             appendLog(.error, "CONNECT failed: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1162,6 +1208,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             nfcWriteRequestedAt = nil
             pendingFrontLightExpected = nil
             frontLightRequestedAt = nil
+            pendingAmbientLightExpected = nil
+            ambientLightRequestedAt = nil
             appendLog(.connect, "DISCONNECT callback: id=\(peripheral.identifier.uuidString) error=\(describe(error))")
         }
     }
@@ -1485,6 +1533,22 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                         pendingBrakeWriteExpected = nil
                         brakeWriteRequestedAt = nil
                     }
+                }
+            } else if let ambientModel = model as? TCB04Model {
+                isAmbientLightOn = ambientModel.ambientLightStatus
+                appendLog(.sdkParse, "SDK parsed TCB04Model: ambientLightStatus=\(ambientModel.ambientLightStatus)")
+                if let expectedStatus = pendingAmbientLightExpected {
+                    let latencyMs = ambientLightRequestedAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? -1
+                    appendLog(.sdkParse, "AMBIENT LIGHT callback: latencyMs=\(latencyMs) expected=\(expectedStatus) actual=\(ambientModel.ambientLightStatus)")
+                    if expectedStatus == ambientModel.ambientLightStatus {
+                        ambientLightStatus = .passed
+                        appendLog(.sdkParse, "AMBIENT LIGHT result: PASSED")
+                    } else {
+                        ambientLightStatus = .partial
+                        appendLog(.error, "AMBIENT LIGHT mismatch expected=\(expectedStatus) actual=\(ambientModel.ambientLightStatus)")
+                    }
+                    pendingAmbientLightExpected = nil
+                    ambientLightRequestedAt = nil
                 }
             } else if let nfcModel = model as? TCB03Model {
                 isNfcEnabled = nfcModel.nfcStatus

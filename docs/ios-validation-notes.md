@@ -34,6 +34,7 @@ Rules: official iOS SDK APIs only, no custom packets, no protocol customization.
 | Feature | Official iOS API / Flow | Status | Classification | Evidence |
 |---|---|---|---|---|
 | Front Light Control | `TCB04Command.writeFrontLightStatus(_:)` + heartbeat confirmation from `TCB01Model.headlight` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; heartbeat confirmation logic wired for validation on real scooter |
+| Ambient Light ON/OFF | `TCB04Command.writeAmbientLightStatus(_:)` + parsed `TCB04Model.ambientLightStatus` | NOT_TESTED | - | ON/OFF controls with TX/RX/SDK-parse/timing logs implemented; TCB04 callback confirmation wired for validation |
 
 ## Investigation Notes (2026-05-14)
 
