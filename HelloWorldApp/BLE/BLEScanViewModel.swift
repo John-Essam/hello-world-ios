@@ -36,6 +36,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     @Published private(set) var telemetryBatteryTempStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryMotorTempStatus: ValidationStatus = .notTested
     @Published private(set) var telemetryDrivingCurrentStatus: ValidationStatus = .notTested
+    @Published private(set) var telemetryBatteryVoltageDetailStatus: ValidationStatus = .notTested
     @Published private(set) var heartbeatStatus: ValidationStatus = .notTested
     @Published private(set) var notifyStatus: ValidationStatus = .notTested
     @Published private(set) var isNotifying = false
@@ -1385,6 +1386,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryTempStatus = .failed
             telemetryMotorTempStatus = .failed
             telemetryDrivingCurrentStatus = .notTested
+            telemetryBatteryVoltageDetailStatus = .failed
             isBound = false
             lastKnownLockStatus = nil
             lastKnownCruiseControlEnabled = nil
@@ -1420,6 +1422,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             pendingSdkAuditsByFunction.removeAll()
             appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
             appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
+            appendLog(.error, "SDK_GAP: Battery voltage detail command has no official iOS helper/parser (no TCB0CCommand exposed)")
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -1492,6 +1495,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryTempStatus = .notTested
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
+            telemetryBatteryVoltageDetailStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil
@@ -1573,6 +1577,7 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             telemetryBatteryTempStatus = .notTested
             telemetryMotorTempStatus = .notTested
             telemetryDrivingCurrentStatus = .notTested
+            telemetryBatteryVoltageDetailStatus = .notTested
             operationalLockStatus = nil
             operationalFrontLightStatus = nil
             operationalCruiseStatus = nil

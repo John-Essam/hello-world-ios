@@ -305,6 +305,7 @@ private struct BLEScooterControlView: View {
                         telemetryBatteryTempCard
                         telemetryMotorTempCard
                         telemetryDrivingCurrentCard
+                        telemetryBatteryVoltageDetailCard
                     case .coreControls:
                         coreControlsCard
                     case .lights:
@@ -623,6 +624,7 @@ private struct BLEScooterControlView: View {
             LabeledContent("Telemetry - Battery Temp", value: viewModel.telemetryBatteryTempStatus.rawValue)
             LabeledContent("Telemetry - Motor Temp", value: viewModel.telemetryMotorTempStatus.rawValue)
             LabeledContent("Telemetry - Driving Current", value: viewModel.telemetryDrivingCurrentStatus.rawValue)
+            LabeledContent("Telemetry - Battery Voltage Detail", value: viewModel.telemetryBatteryVoltageDetailStatus.rawValue)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -814,6 +816,23 @@ private struct BLEScooterControlView: View {
             .disabled(!viewModel.isCommandChannelReady)
 
             Text("Official SDK API: `TCB0BCommand.readDrivingCurrent()`")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var telemetryBatteryVoltageDetailCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Battery Voltage Detail")
+                .font(.headline)
+
+            Text("Not available in official iOS SDK")
+                .font(.subheadline.weight(.semibold))
+            LabeledContent("Validation", value: viewModel.telemetryBatteryVoltageDetailStatus.rawValue)
+            LabeledContent("Classification", value: ValidationIssueType.iosSdkGap.rawValue)
+            Text("The iOS SDK exposes `cmd0C` enum metadata but no official command helper/model parser flow for this feature.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
