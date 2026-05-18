@@ -207,6 +207,7 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     private var controllerOtaHelper: TCBECCMD?
     private var meterOtaHelper: TCBECCMD?
     private var activeOtaTarget: OtaTarget?
+    private var hasLoggedSdkGapSummaryForCurrentSession = false
 
     private let serviceUUIDs: [CBUUID] = [
         CBUUID(string: "54430011-0153-3236-FFFF-FFFFFFFBFFFF"),
@@ -1383,10 +1384,46 @@ final class BLEFoundationViewModel: NSObject, ObservableObject {
     }
 
     private func appendLog(_ category: ValidationLogCategory, _ message: String) {
-        logs.insert(ValidationLog(category: category, message: message), at: 0)
+        logs.insert(ValidationLog(category: category, message: formatLogMessage(category: category, message: message)), at: 0)
         if logs.count > 200 {
             logs.removeLast(logs.count - 200)
         }
+    }
+
+    private func formatLogMessage(category: ValidationLogCategory, message: String) -> String {
+        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tag: String = switch category {
+        case .connect:
+            normalizedMessage.localizedCaseInsensitiveContains("DISCONNECT") ? "DISCONNECT" : "CONNECT"
+        case .notify:
+            "NOTIFY_READY"
+        case .tx:
+            "SDK_TX"
+        case .rx:
+            "SDK_RX"
+        case .sdkParse:
+            "SDK_PARSE_OK"
+        case .error:
+            if normalizedMessage.localizedCaseInsensitiveContains("SDK_GAP") {
+                "SDK_GAP"
+            } else if normalizedMessage.localizedCaseInsensitiveContains("parse") || normalizedMessage.contains("TCBBLEModel") {
+                "SDK_PARSE_FAIL"
+            } else {
+                "VALIDATION_FAIL"
+            }
+        case .scan:
+            "DEVICE_PROFILE"
+        }
+        return "\(tag) \(normalizedMessage)"
+    }
+
+    private func logSdkGapSummaryForCurrentSessionIfNeeded() {
+        guard !hasLoggedSdkGapSummaryForCurrentSession else { return }
+        hasLoggedSdkGapSummaryForCurrentSession = true
+        appendLog(
+            .error,
+            "SDK_GAP summary: BatteryTemp, MotorTemp, BatteryVoltageDetail(cmd0C), RidingTime(cmd31), SpeedStats(cmd32), SerialNumber(cmd1D), DeviceInfo(cmd1E), FactoryReset, AutoPowerOff(cmd06), SecurityUtilities(A0-AA), BatteryTotalCapacity(cmd0D), BootloaderFlashOTA(D0-D2/F0-F2)."
+        )
     }
 
     private func runStaticSDKCommandAudit() {
@@ -2141,18 +2178,8 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
             isGlobalMaxSpeedReadPending = false
             globalMaxSpeedRequestedAt = nil
             pendingSdkAuditsByFunction.removeAll()
-            appendLog(.error, "SDK_GAP: Battery temperature read is not available via official iOS SDK APIs (no battery-target helper on TCB0ACommand)")
-            appendLog(.error, "SDK_GAP: Motor temperature read is not available via official iOS SDK APIs (no motor-target helper on TCB0ACommand)")
-            appendLog(.error, "SDK_GAP: Battery voltage detail command has no official iOS helper/parser (no TCB0CCommand exposed)")
-            appendLog(.error, "SDK_GAP: Riding time has no official iOS command helper/model parser (cmd31 not exposed in SDK commands)")
-            appendLog(.error, "SDK_GAP: Speed stats avg/max has no official iOS command helper/model parser (cmd32 not exposed in SDK commands)")
-            appendLog(.error, "SDK_GAP: Serial number has no official iOS SDK helper/model parser (cmd1D is not exposed via command APIs)")
-            appendLog(.error, "SDK_GAP: Detailed device info has no official iOS SDK helper/model parser (cmd1E is not exposed via command APIs)")
-            appendLog(.error, "SDK_GAP: Factory reset has no official iOS command helper (`TCB03Command.restoreFactory()` not exposed)")
-            appendLog(.error, "SDK_GAP: Auto power-off (cmd06) has no official iOS command helper/model parser")
-            appendLog(.error, "SDK_GAP: Password/security utilities (A0-AA) have no official iOS command helper/model parser")
-            appendLog(.error, "SDK_GAP: Battery total capacity (cmd0D) has no official iOS command helper/model parser")
-            appendLog(.error, "SDK_GAP: Bootloader/flash OTA (D0-D2/F0-F2) has no official iOS high-level validation wrapper in this app")
+            hasLoggedSdkGapSummaryForCurrentSession = false
+            logSdkGapSummaryForCurrentSessionIfNeeded()
             peripheral.discoverServices(nil)
             scheduleChannelReadinessDiagnostics(for: peripheral.identifier, attemptID: connectAttemptID)
         }
@@ -2456,6 +2483,9 @@ extension BLEFoundationViewModel: CBCentralManagerDelegate {
 extension BLEFoundationViewModel: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: (any Error)?) {
         Task { @MainActor in
+            guard peripheral.identifier == connectedDeviceID else {
+                return
+            }
             if let error {
                 appendLog(.error, "SERVICES discovery error: \(describe(error))")
             }
@@ -2480,6 +2510,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         error: (any Error)?
     ) {
         Task { @MainActor in
+            guard peripheral.identifier == connectedDeviceID else {
+                return
+            }
             if let error {
                 appendLog(.error, "CHAR discovery error for service \(service.uuid.uuidString): \(describe(error))")
             }
@@ -2520,6 +2553,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         error: (any Error)?
     ) {
         Task { @MainActor in
+            guard peripheral.identifier == connectedDeviceID else {
+                return
+            }
             appendLog(.notify,
                 "NOTIFY state: char=\(characteristic.uuid.uuidString) isNotifying=\(characteristic.isNotifying) error=\(describe(error))"
             )
@@ -2541,6 +2577,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
         error: (any Error)?
     ) {
         Task { @MainActor in
+            guard peripheral.identifier == connectedDeviceID else {
+                return
+            }
             if let error {
                 appendLog(.error, "RX callback error: char=\(characteristic.uuid.uuidString) error=\(describe(error))")
                 return
@@ -3091,8 +3130,9 @@ extension BLEFoundationViewModel: CBPeripheralDelegate {
                     appendLog(.error, "OTA RX received TCBE1Model but no active OTA target")
                 }
             } else if let otaResultModel = model as? TCBE2Model {
-                appendLog(.sdkParse, "SDK parsed TCBE2Model: completionResponse=\(otaResultModel.upgradeCompletionResponse)")
-                appendLog(.rx, "OTA RX model=TCBE2Model completion=\(otaResultModel.upgradeCompletionResponse)")
+                let completion = String(describing: otaResultModel.upgradeCompletionResponse)
+                appendLog(.sdkParse, "SDK parsed TCBE2Model: completionResponse=\(completion)")
+                appendLog(.rx, "OTA RX model=TCBE2Model completion=\(completion)")
                 switch activeOtaTarget {
                 case .controller:
                     controllerOtaHelper?.sendNextPacketWith(reponse: otaResultModel)
