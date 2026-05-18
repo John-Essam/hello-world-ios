@@ -291,12 +291,25 @@ private struct BLEScooterControlView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Picker("Section", selection: $selectedSection) {
-                ForEach(Section.allCases) { section in
-                    Text(section.rawValue).tag(section)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Section.allCases) { section in
+                        Button {
+                            selectedSection = section
+                        } label: {
+                            Text(section.rawValue)
+                                .font(.footnote.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    (selectedSection == section ? Color.accentColor : Color.secondary.opacity(0.15)),
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(selectedSection == section ? Color.white : Color.primary)
+                        }
+                    }
                 }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
@@ -406,6 +419,10 @@ private struct BLEScooterControlView: View {
                 .buttonStyle(.bordered)
                 .tint(.red)
             }
+
+            Text("Actions become reliable only after CONNECT + NOTIFY_READY + write channel are all active.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1373,24 +1390,27 @@ private struct BLEScooterControlView: View {
                 Text("No logs yet")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(viewModel.logs) { log in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(log.category.rawValue)
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(logCategoryColor(log.category).opacity(0.2), in: Capsule())
-                                .foregroundStyle(logCategoryColor(log.category))
-                            Text(log.timestamp.formatted(date: .omitted, time: .standard))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(viewModel.logs.prefix(120)) { log in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(log.category.rawValue)
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(logCategoryColor(log.category).opacity(0.2), in: Capsule())
+                                    .foregroundStyle(logCategoryColor(log.category))
+                                Text(log.timestamp.formatted(date: .omitted, time: .standard))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(log.message)
+                                .font(.caption)
+                                .textSelection(.enabled)
                         }
-                        Text(log.message)
-                            .font(.caption)
-                            .textSelection(.enabled)
+                        .padding(.vertical, 4)
+                        Divider()
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
